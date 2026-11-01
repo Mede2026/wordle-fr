@@ -171,7 +171,7 @@ grant select on public.profiles, public.results to service_role;
 
 -- Appel de la fonction supabase/functions/daily-reminder toutes les heures
 -- (remplacer <projet> par l'identifiant du projet Supabase)
-create extension if not exists pg_net;
+create extension if not exists pg_net with schema extensions;
 create extension if not exists pg_cron;
 -- select cron.schedule('rappel-quotidien', '0 * * * *', $$
 --   select net.http_post(
