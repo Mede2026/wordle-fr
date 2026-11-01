@@ -48,17 +48,26 @@
   }
 
   // ---------- Sauvegarde (localStorage) ----------
-  function loadStore() {
-    let s = {};
-    try { s = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch (e) { /* données abîmées */ }
+  function withDefaults(s) {
     s.settings = Object.assign({ colorBlind: false, webShare: false, hardMode: false, theme: null, layout: {} }, s.settings);
+    s.settings.layout = Object.assign({}, s.settings.layout);
     for (const lang of Object.keys(window.LANGS)) {
       s[lang] = Object.assign({ game: null, stats: {}, archives: {} }, s[lang]);
     }
     return s;
   }
+  function loadStore() {
+    let s = {};
+    try { s = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch (e) { /* données abîmées */ }
+    return withDefaults(s);
+  }
   const store = loadStore();
-  const save = () => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) { /* mode privé */ } };
+  const writeLocal = () => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) { /* mode privé */ } };
+  const save = () => {
+    store.updatedAt = Date.now();
+    writeLocal();
+    schedulePush(); // compte en ligne (s'il y en a un)
+  };
 
   // ---------- État de la partie en cours ----------
   const state = {
@@ -67,7 +76,8 @@
     archive: false,
     answer: "",
     guesses: [],   // mots déjà validés
-    current: "",   // mot en train d'être tapé
+    current: "",   // mot en train d'être tapé (" " = case vide)
+    cursor: 0,     // case sélectionnée dans la ligne en cours (flèches ← →)
     finished: false,
     won: false,
     busy: false,   // vrai pendant l'animation (on bloque le clavier)
@@ -108,6 +118,8 @@
     state.won = state.guesses.includes(state.answer);
     state.finished = state.won || state.guesses.length >= NB_ATTEMPTS;
     if (state.finished) state.current = "";
+    const gap = state.current.indexOf(" ");
+    state.cursor = gap >= 0 ? gap : state.current.length;
     renderAll();
   }
 
@@ -148,12 +160,12 @@
       const res = r < state.guesses.length ? evaluate(word, state.answer) : null;
       for (let c = 0; c < NB_LETTERS; c++) {
         const t = tiles[r][c];
-        const letter = word[c] || "";
+        const letter = (word[c] || "").trim();
         t.textContent = letter;
         t.className = "tile";
         t.style.animationDelay = t.style.transitionDelay = "";
         if (letter) t.classList.add("filled");
-        if (!state.finished && r === state.guesses.length && c === state.current.length) t.classList.add("cursor");
+        if (!state.finished && r === state.guesses.length && c === state.cursor) t.classList.add("cursor");
         if (res) {
           t.classList.add(res[c]);
           if (r === animateRow) {
@@ -252,22 +264,45 @@
   function onKey(key) {
     if (state.finished || state.busy || !L) return;
     if (key === "Enter") return submit();
-    if (key === "Backspace") {
-      if (!state.current) return;
-      state.current = state.current.slice(0, -1);
-    } else if (/^[A-Z]$/.test(key) && state.current.length < NB_LETTERS) {
-      state.current += key;
+    // La ligne en cours = 5 cases ; on écrit / efface à la position du curseur.
+    const cells = state.current.padEnd(NB_LETTERS, " ").split("");
+    let popAt = -1;
+    if (key === "ArrowLeft") {
+      state.cursor = Math.max(0, state.cursor - 1);
+    } else if (key === "ArrowRight") {
+      if (state.cursor < NB_LETTERS - 1) state.cursor++;
+    } else if (key === "Backspace") {
+      // Case vide (ou fin de ligne) → on recule d'abord, comme un traitement de texte.
+      if (state.cursor > 0 && (state.cursor === NB_LETTERS || cells[state.cursor] === " ")) state.cursor--;
+      if (cells[state.cursor] === " ") return renderGrid();
+      cells[state.cursor] = " ";
+    } else if (/^[A-Z]$/.test(key) && state.cursor < NB_LETTERS) {
+      cells[state.cursor] = key;
+      popAt = state.cursor++;
     } else {
       return;
     }
+    const current = cells.join("").trimEnd();
+    const changed = current !== state.current;
+    state.current = current;
     renderGrid();
-    if (key !== "Backspace") tiles[state.guesses.length][state.current.length - 1].classList.add("pop");
-    persistGame(); // la ligne en cours survit à une fermeture de la page
+    if (popAt >= 0) tiles[state.guesses.length][popAt].classList.add("pop");
+    if (changed) persistGame(); // la ligne en cours survit à une fermeture de la page
   }
+
+  // Clic sur une case de la ligne en cours → le curseur y va.
+  gridEl.addEventListener("click", (e) => {
+    const t = e.target.closest(".tile");
+    if (!t || state.finished || state.busy) return;
+    const row = tiles[state.guesses.length];
+    if (!row || !row.includes(t)) return;
+    state.cursor = row.indexOf(t);
+    renderGrid();
+  });
 
   function submit() {
     const guess = state.current;
-    if (guess.length < NB_LETTERS) { toast(T("notEnough")); return shakeRow(); }
+    if (guess.length < NB_LETTERS || guess.includes(" ")) { toast(T("notEnough")); return shakeRow(); }
     if (!getDict(state.lang).valid.has(guess)) { toast(T("notInList")); return shakeRow(); }
     if (state.hardMode) {
       const err = G.hardModeError(state.guesses, state.answer, guess);
@@ -280,6 +315,7 @@
     const row = state.guesses.length;
     state.guesses.push(guess);
     state.current = "";
+    state.cursor = 0;
     state.won = guess === state.answer;
     state.finished = state.won || state.guesses.length >= NB_ATTEMPTS;
     persistGame();
@@ -307,7 +343,7 @@
     if (e.key === "Escape") return closeModals();
     if (document.querySelector(".modal:not([hidden])") || !$("#lang-picker").hidden) return;
     if (e.target.tagName === "INPUT") return;
-    if (e.key === "Enter" || e.key === "Backspace") {
+    if (["Enter", "Backspace", "ArrowLeft", "ArrowRight"].includes(e.key)) {
       e.preventDefault();
       return onKey(e.key);
     }
@@ -457,6 +493,7 @@
       box.appendChild(b);
     });
     $$("#modal-settings [data-lang]").forEach((b) => b.classList.toggle("selected", b.dataset.lang === state.lang));
+    renderAccount();
   }
 
   $$(".toggle").forEach((t) => t.addEventListener("click", () => {
@@ -484,6 +521,113 @@
     $('meta[name="theme-color"]').content = light ? "#ffffff" : "#1d1d20";
   }
 
+  // ---------- Compte en ligne (Supabase) ----------
+  // Courriel + mot de passe. La sauvegarde complète (store) est une ligne de la table « saves ».
+  // À chaque connexion / retour sur la page : on récupère, on fusionne (mergeStores), on renvoie.
+  const CFG = window.SUPABASE_CONFIG || {};
+  const SDK_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js";
+  const account = { sb: null, user: null, status: "", pushTimer: null };
+
+  function setAccountStatus(key, ...args) {
+    account.status = key && L ? T(key, ...args) : "";
+    if (!$("#modal-settings").hidden) renderAccount();
+  }
+
+  function renderAccount() {
+    const box = $("#account");
+    box.hidden = !account.sb;
+    if (!account.sb) return;
+    $("#account-form").hidden = !!account.user;
+    $("#account-info").hidden = !account.user;
+    $("#account-status").textContent = account.status;
+    if (account.user) $("#account-email").textContent = account.user.email;
+  }
+
+  function schedulePush() {
+    if (!account.user) return;
+    clearTimeout(account.pushTimer);
+    account.pushTimer = setTimeout(push, 1500); // on regroupe les sauvegardes rapprochées
+  }
+
+  async function push() {
+    if (!account.user) return;
+    clearTimeout(account.pushTimer);
+    const { error } = await account.sb.from("saves")
+      .upsert({ user_id: account.user.id, data: store, updated_at: new Date().toISOString() });
+    setAccountStatus(error ? "syncError" : "syncedAt", new Date().toLocaleTimeString(L ? L.dateLocale : undefined, { hour: "2-digit", minute: "2-digit" }));
+  }
+
+  async function pull() {
+    if (!account.user) return;
+    setAccountStatus("syncing");
+    const { data, error } = await account.sb.from("saves").select("data").eq("user_id", account.user.id).maybeSingle();
+    if (error) return setAccountStatus("syncError");
+    const merged = withDefaults(G.mergeStores(store, data && data.data));
+    merged.lang = store.lang; // on reste dans la langue affichée
+    for (const k of Object.keys(store)) delete store[k];
+    Object.assign(store, merged);
+    writeLocal();
+    applyLook();
+    if (L && !state.busy) {
+      buildKeyboard();
+      loadGame();
+    }
+    if (!$("#modal-settings").hidden) renderSettings();
+    await push();
+  }
+
+  async function initAccount() {
+    if (!CFG.url || !CFG.anonKey) return; // pas configuré : jeu 100 % local
+    try {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = SDK_URL;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    } catch (e) { return; } // hors-ligne : on jouera sans synchro
+    account.sb = window.supabase.createClient(CFG.url, CFG.anonKey);
+    account.sb.auth.onAuthStateChange((event, session) => {
+      const user = session ? session.user : null;
+      const changed = (user && user.id) !== (account.user && account.user.id);
+      account.user = user;
+      if (!user) setAccountStatus("");
+      // (pas d'appel Supabase directement dans ce callback : on décale)
+      if (changed && user) setTimeout(pull, 0);
+      renderAccount();
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") pull();
+      else if (account.pushTimer) push(); // on envoie avant que la page parte en arrière-plan
+    });
+  }
+
+  $("#account-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!account.sb) return;
+    const signUp = e.submitter && e.submitter.dataset.mode === "up";
+    const creds = { email: $("#acc-email").value.trim(), password: $("#acc-password").value };
+    $$("#account-form button").forEach((b) => (b.disabled = true));
+    setAccountStatus("signingIn");
+    const { data, error } = signUp ? await account.sb.auth.signUp(creds) : await account.sb.auth.signInWithPassword(creds);
+    $$("#account-form button").forEach((b) => (b.disabled = false));
+    if (error) {
+      const known = { invalid_credentials: "badLogin", user_already_exists: "alreadyUser", weak_password: "weakPassword" };
+      if (error.name === "AuthRetryableFetchError") setAccountStatus("syncError"); // pas de réseau
+      else if (known[error.code]) setAccountStatus(known[error.code]);
+      else { account.status = error.message; renderAccount(); }
+      return;
+    }
+    if (signUp && !data.session) return setAccountStatus("confirmOn"); // « Confirm email » encore activé
+    $("#acc-password").value = "";
+  });
+
+  $("#btn-signout").addEventListener("click", async () => {
+    if (account.pushTimer) await push();
+    await account.sb.auth.signOut(); // les données restent sur cet appareil
+  });
+
   // ---------- Archives ----------
   $("#btn-archives").addEventListener("click", () => {
     if (state.busy) return;
@@ -506,6 +650,7 @@
     document.title = L.docTitle;
     $$("[data-i18n]").forEach((e) => (e.textContent = T(e.dataset.i18n)));
     $$("[data-i18n-html]").forEach((e) => (e.innerHTML = T(e.dataset.i18nHtml)));
+    $$("[data-i18n-placeholder]").forEach((e) => (e.placeholder = T(e.dataset.i18nPlaceholder)));
     $$("[data-i18n-title]").forEach((e) => { e.title = T(e.dataset.i18nTitle); e.setAttribute("aria-label", e.title); });
     $("#btn-lang").textContent = state.lang.toUpperCase();
 
@@ -566,6 +711,7 @@
   if (window.LANGS[fromHash]) setLang(fromHash);
   else if (store.lang && window.LANGS[store.lang]) setLang(store.lang);
   else showPicker();
+  initAccount();
 
   // Mode hors-ligne (seulement si le site est servi en http/https)
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

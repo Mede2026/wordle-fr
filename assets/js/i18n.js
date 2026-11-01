@@ -49,6 +49,21 @@ window.LANGS = {
       nativeShare: "Partage natif (mobile)",
       keyboard: "Clavier",
       language: "Langue",
+      account: "Compte (synchro entre appareils)",
+      accountHint: "Connecte-toi pour retrouver tes stats, archives et réglages sur tous tes appareils.",
+      email: "Courriel",
+      password: "Mot de passe (6 caractères min.)",
+      signIn: "Se connecter",
+      signUp: "Créer un compte",
+      signOut: "Se déconnecter",
+      signingIn: "Connexion…",
+      syncing: "Synchronisation…",
+      syncedAt: (t) => `Synchronisé à ${t} ✓`,
+      syncError: "Synchro impossible (hors-ligne ?) — on réessaiera.",
+      badLogin: "Courriel ou mot de passe incorrect.",
+      alreadyUser: "Ce courriel a déjà un compte : clique sur « Se connecter ».",
+      weakPassword: "Mot de passe trop faible (6 caractères minimum).",
+      confirmOn: "Compte créé, mais Supabase demande une confirmation par courriel (option « Confirm email » à désactiver).",
       notEnough: "Pas assez de lettres",
       notInList: "Ce mot n'est pas dans la liste",
       mustPlace: (l, n) => `La ${n === 1 ? "1re" : n + "e"} lettre doit être ${l}`,
@@ -64,6 +79,8 @@ window.LANGS = {
         {{ex:SOEUR:4:incorrect}}<p>La lettre <b>R</b> n'est <strong>pas dans le mot</strong>.</p>
         <p>Les accents sont ignorés (É = E). Un nouveau mot chaque jour à minuit, heure de Paris (18 h au Québec) — le même que sur wordle.louan.me !</p>`,
       credits: `<h3>Crédits</h3>
+        <p>Version réalisée par <a href="https://github.com/Mede2026" target="_blank" rel="noopener">Mede2026</a>.</p>
+        <p><strong>Ce n'est pas le jeu officiel.</strong> Le Wordle officiel : <a href="https://www.nytimes.com/games/wordle" target="_blank" rel="noopener">nytimes.com/games/wordle</a> — la version française d'origine : <a href="https://wordle.louan.me" target="_blank" rel="noopener">wordle.louan.me</a>.</p>
         <p>Version FR basée sur <a href="https://github.com/louanben/wordle-fr" target="_blank" rel="noopener">wordle-fr</a> par @louanben (GPL-3.0).</p>
         <p>Concept inspiré de <strong>Wordle</strong> par Josh Wardle.</p>`,
     },
@@ -115,6 +132,21 @@ window.LANGS = {
       nativeShare: "Native share (mobile)",
       keyboard: "Keyboard",
       language: "Language",
+      account: "Account (sync across devices)",
+      accountHint: "Sign in to get your stats, archive and settings on all your devices.",
+      email: "Email",
+      password: "Password (6+ characters)",
+      signIn: "Sign in",
+      signUp: "Create account",
+      signOut: "Sign out",
+      signingIn: "Signing in…",
+      syncing: "Syncing…",
+      syncedAt: (t) => `Synced at ${t} ✓`,
+      syncError: "Couldn't sync (offline?) — will retry.",
+      badLogin: "Wrong email or password.",
+      alreadyUser: "This email already has an account: use “Sign in”.",
+      weakPassword: "Password too weak (6+ characters).",
+      confirmOn: "Account created, but Supabase requires email confirmation (turn off “Confirm email”).",
       notEnough: "Not enough letters",
       notInList: "Not in word list",
       mustPlace: (l, n) => `Letter ${n} must be ${l}`,
@@ -130,6 +162,8 @@ window.LANGS = {
         {{ex:VAGUE:3:incorrect}}<p><b>U</b> is <strong>not in the word</strong>.</p>
         <p>A new word every day at midnight!</p>`,
       credits: `<h3>Credits</h3>
+        <p>Made by <a href="https://github.com/Mede2026" target="_blank" rel="noopener">Mede2026</a>.</p>
+        <p><strong>This is not the official game.</strong> Play the official Wordle at <a href="https://www.nytimes.com/games/wordle" target="_blank" rel="noopener">nytimes.com/games/wordle</a>.</p>
         <p>English word lists from <a href="https://github.com/everurstruly/The-New-York-Times-Wordle-Clone" target="_blank" rel="noopener">The-New-York-Times-Wordle-Clone</a>.</p>
         <p>Inspired by <strong>Wordle</strong> by Josh Wardle.</p>`,
     },

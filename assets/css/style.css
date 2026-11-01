@@ -363,6 +363,21 @@ main {
 .layout-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
 .layout-buttons button { padding: 6px 12px; border-radius: 5px; background: var(--btn-bg); font-size: 13px; font-weight: 700; }
 .layout-buttons button.selected { background: var(--correct); color: #fff; }
+.account-form { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 10px; }
+.account-form[hidden] { display: none; }
+.account-form input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border-filled);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--white);
+  font: inherit;
+  font-size: 16px; /* 16px : pas de zoom auto sur iPhone */
+}
+.account-form input:focus { outline: 2px solid var(--correct); outline-offset: -1px; }
+.account-form strong { font-size: 14px; word-break: break-all; }
+.layout-buttons button:disabled { opacity: 0.5; }
 .credits { margin-top: 20px; }
 .credits h3 { color: var(--white); font-size: 16px; margin-bottom: 8px; }
 

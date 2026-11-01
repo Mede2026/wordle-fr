@@ -16,11 +16,35 @@ Au premier lancement, choisis ta langue. Tu peux la changer avec le bouton **FR 
 - Statistiques séparées FR / EN (parties, % de victoires, séries, distribution)
 - Mode **Archives** : rejoue les mots des jours précédents (progression sauvegardée, ✓ quand fini)
 - La ligne en cours est sauvegardée si tu fermes la page
+- Flèches **← →** (ou clic sur une case) pour corriger une lettre au milieu du mot
+- **Compte en ligne** (optionnel) : stats, archives et réglages synchronisés sur tous tes appareils
 - Mode **difficile**, mode **daltonien**, **thème clair**
 - Claviers AZERTY, BÉPO, QWERTY, QWERTZ (FR) — QWERTY, AZERTY, DVORAK (EN)
 - Accents ignorés au clavier (é → E)
 - Partage du résultat en emojis 🟩🟨⬛
 - Hors-ligne (PWA) quand le site est hébergé (ex. GitHub Pages)
+
+## Compte et synchronisation (Supabase)
+
+Optionnel : sans configuration, le jeu marche comme avant (tout reste sur l'appareil).
+
+1. Crée un projet gratuit sur [supabase.com](https://supabase.com).
+2. **SQL Editor → New query** : colle le contenu de [`supabase/schema.sql`](supabase/schema.sql) puis **Run**.
+3. **Authentication → Sign In / Providers → Email** : désactive **Confirm email** → **Save**
+   (sinon chaque inscription envoie un courriel, et le plan gratuit en envoie très peu).
+4. **Project Settings → API** (ou bouton **Connect**) : copie la *Project URL* et la clé *anon* / *publishable*
+   dans [`assets/js/config.js`](assets/js/config.js). Ces deux valeurs sont publiques, c'est normal
+   (la table est protégée : chacun ne voit que sa propre sauvegarde).
+
+Ensuite, dans le jeu : ⚙️ Paramètres → **Compte** → *Créer un compte* (courriel + mot de passe).
+Sur un autre appareil, *Se connecter* avec les mêmes identifiants : les données des deux appareils sont fusionnées
+(aucune partie perdue) et se resynchronisent à chaque retour sur la page.
+
+## Mettre en ligne (GitHub Pages)
+
+Sur GitHub : **Settings → Pages → Build and deployment → Source : Deploy from a branch**,
+branche `main`, dossier `/ (root)` → **Save**. Le jeu sera sur `https://<utilisateur>.github.io/wordle-fr/`
+(mis à jour à chaque `git push`).
 
 ## Tests
 
@@ -28,7 +52,7 @@ Au premier lancement, choisis ta langue. Tu peux la changer avec le bouton **FR 
 node --test
 ```
 
-(ou `npm test`) — vérifie les couleurs (lettres en double), le mode difficile, le mot du jour FR (identique à wordle.louan.me), les listes de mots, les dates et les stats. Aucune installation nécessaire, juste [Node.js](https://nodejs.org).
+(ou `npm test`) — vérifie les couleurs (lettres en double), le mode difficile, la fusion des sauvegardes entre appareils, le mot du jour FR (identique à wordle.louan.me), les listes de mots, les dates et les stats. Aucune installation nécessaire, juste [Node.js](https://nodejs.org).
 
 ## Structure
 
@@ -38,9 +62,11 @@ assets/css/style.css  style
 assets/js/game.js     interface (affichage, clavier, sauvegarde)
 assets/js/logic.js    règles pures (couleurs, mode difficile, mot du jour, stats)
 assets/js/i18n.js     textes, claviers et réglages FR / EN
+assets/js/config.js   adresse et clé publique Supabase (compte en ligne, optionnel)
 assets/js/words-*.js  listes de mots, chargées seulement pour la langue choisie
 assets/js/vendor/     seedrandom (MIT) — même tirage que wordle.louan.me
 tests/                tests automatiques (node --test)
+supabase/schema.sql   table de sauvegarde en ligne (à coller dans Supabase)
 assets/icons, img     icônes
 sw.js, manifest.json  mode hors-ligne / installation (PWA)
 ```

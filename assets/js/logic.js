@@ -147,9 +147,44 @@
     return s;
   }
 
+  /**
+   * Fusionne deux sauvegardes (cet appareil + le compte en ligne) sans rien perdre :
+   * stats et archives de tous les jours, la partie la plus avancée, les réglages les plus récents.
+   */
+  function mergeStores(a, b) {
+    a = a || {}; b = b || {};
+    const [older, newer] = (a.updatedAt || 0) > (b.updatedAt || 0) ? [b, a] : [a, b];
+    const progress = (slot) => (slot && slot.guesses ? slot.guesses.length : -1);
+    // À égalité, on garde la version la plus récente.
+    const bestSlot = (o, n) => (progress(o) > progress(n) ? o : n || o);
+    const out = Object.assign({}, older, newer);
+    out.settings = Object.assign({}, older.settings, newer.settings);
+    out.updatedAt = Math.max(a.updatedAt || 0, b.updatedAt || 0);
+
+    for (const key of new Set(Object.keys(a).concat(Object.keys(b)))) {
+      const o = older[key], n = newer[key];
+      const isLang = (x) => x && typeof x === "object" && ("stats" in x || "archives" in x || "game" in x);
+      if (!isLang(o) && !isLang(n)) continue;
+      const lo = o || {}, ln = n || {};
+      const archives = Object.assign({}, lo.archives);
+      for (const d in ln.archives) archives[d] = bestSlot(archives[d], ln.archives[d]);
+      let game = ln.game || lo.game || null;
+      if (lo.game && ln.game) {
+        if (lo.game.date !== ln.game.date) game = lo.game.date > ln.game.date ? lo.game : ln.game;
+        else game = bestSlot(lo.game, ln.game);
+      }
+      out[key] = Object.assign({}, lo, ln, {
+        stats: Object.assign({}, lo.stats, ln.stats),
+        archives,
+        game,
+      });
+    }
+    return out;
+  }
+
   return {
     NB_LETTERS, NB_ATTEMPTS,
     pad, daysBetween, addDays, todayKey, secondsToMidnight,
-    shuffled, chunk5, wordFor, evaluate, hardModeError, computeStats,
+    shuffled, chunk5, wordFor, evaluate, hardModeError, computeStats, mergeStores,
   };
 });

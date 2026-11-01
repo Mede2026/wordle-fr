@@ -149,3 +149,31 @@ test("stats : un jour sauté casse la série", () => {
   assert.equal(G.computeStats(games, "2026-10-30").maxStreak, 1);
   assert.equal(G.computeStats(games, "2026-11-05").streak, 0);
 });
+
+// ---------- Synchronisation (fusion de deux appareils) ----------
+test("mergeStores : garde les stats et archives des deux appareils", () => {
+  const phone = { updatedAt: 1, fr: { stats: { "2026-10-30": { won: true, n: 3 } }, archives: { "2026-01-01": { answer: "PELLE", guesses: ["PELLE"] } }, game: null } };
+  const pc = { updatedAt: 2, fr: { stats: { "2026-10-31": { won: false, n: 6 } }, archives: { "2026-01-02": { answer: "FRUIT", guesses: [] } }, game: null } };
+  const m = G.mergeStores(phone, pc);
+  assert.deepEqual(Object.keys(m.fr.stats).sort(), ["2026-10-30", "2026-10-31"]);
+  assert.deepEqual(Object.keys(m.fr.archives).sort(), ["2026-01-01", "2026-01-02"]);
+  assert.equal(m.updatedAt, 2);
+});
+
+test("mergeStores : la partie la plus avancée ou la plus récente gagne", () => {
+  const a = { updatedAt: 5, fr: { game: { date: "2026-11-01", answer: "PELLE", guesses: ["FRUIT"] } } };
+  const b = { updatedAt: 1, fr: { game: { date: "2026-11-01", answer: "PELLE", guesses: ["FRUIT", "POCHE"] } } };
+  assert.equal(G.mergeStores(a, b).fr.game.guesses.length, 2); // plus d'essais, même si plus ancienne
+  const old = { updatedAt: 9, fr: { game: { date: "2026-10-31", answer: "X", guesses: ["A", "B", "C"] } } };
+  assert.equal(G.mergeStores(old, b).fr.game.date, "2026-11-01"); // le jour le plus récent
+});
+
+test("mergeStores : réglages et langue de la sauvegarde la plus récente", () => {
+  const a = { updatedAt: 1, lang: "en", settings: { theme: "dark", colorBlind: true } };
+  const b = { updatedAt: 2, lang: "fr", settings: { theme: "light" } };
+  const m = G.mergeStores(a, b);
+  assert.equal(m.lang, "fr");
+  assert.equal(m.settings.theme, "light");
+  assert.equal(m.settings.colorBlind, true);
+  assert.deepEqual(G.mergeStores(null, b).settings, { theme: "light" });
+});

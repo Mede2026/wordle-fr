@@ -137,12 +137,30 @@
           <button data-lang="en">English</button>
         </div>
       </div>
+      <div class="setting setting-col" id="account" hidden>
+        <span data-i18n="account"></span>
+        <p class="setting-hint" data-i18n="accountHint"></p>
+        <form id="account-form" class="account-form">
+          <input type="email" id="acc-email" autocomplete="email" required data-i18n-placeholder="email">
+          <input type="password" id="acc-password" autocomplete="current-password" minlength="6" required data-i18n-placeholder="password">
+          <div class="layout-buttons">
+            <button type="submit" class="selected" data-mode="in" data-i18n="signIn"></button>
+            <button type="submit" data-mode="up" data-i18n="signUp"></button>
+          </div>
+        </form>
+        <div id="account-info" class="account-form" hidden>
+          <strong id="account-email"></strong>
+          <div class="layout-buttons"><button type="button" id="btn-signout" data-i18n="signOut"></button></div>
+        </div>
+        <p class="setting-hint" id="account-status" aria-live="polite"></p>
+      </div>
       <div class="credits" data-i18n-html="credits"></div>
     </div>
   </div>
 
   <!-- Les listes de mots (words-fr.js / words-en.js) sont chargées par game.js
        seulement pour la langue choisie. -->
+  <script src="assets/js/config.js"></script>
   <script src="assets/js/vendor/seedrandom.min.js"></script>
   <script src="assets/js/logic.js"></script>
   <script src="assets/js/i18n.js"></script>
