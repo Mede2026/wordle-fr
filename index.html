@@ -41,6 +41,7 @@
       <div class="header-container">
         <div class="header-side">
           <button class="icon-btn" id="btn-archives" data-i18n-title="archives"><img class="icon" src="assets/icons/archive.svg" alt=""></button>
+          <button class="icon-btn" id="btn-free" data-i18n-title="freeMode"><img class="icon" src="assets/icons/free.svg" alt=""></button>
           <button class="icon-btn" id="btn-stats" data-i18n-title="stats"><img class="icon" src="assets/icons/stats.svg" alt=""></button>
           <button class="icon-btn" id="btn-friends" data-i18n-title="friends" hidden><img class="icon" src="assets/icons/friends.svg" alt=""></button>
         </div>
@@ -94,6 +95,7 @@
           <a class="btn" id="btn-definition" target="_blank" rel="noopener">
             <img class="icon" src="assets/icons/definition.svg" alt=""><span data-i18n="definition"></span>
           </a>
+          <button class="btn" id="btn-new-word" hidden><span data-i18n="newWord"></span></button>
           <button class="btn" id="btn-share">
             <img class="icon" src="assets/icons/copy.svg" alt=""><span id="share-label"></span>
           </button>
@@ -111,10 +113,15 @@
       <button class="close-btn" data-close><img class="icon" src="assets/icons/close.svg" alt="×"></button>
       <h2><span data-i18n="friendsTitle"></span> <small class="lang-tag" id="friends-lang"></small></h2>
       <div id="friends-signedout">
+        <p class="invite-note" id="friends-invited" data-i18n="invitedSignIn" hidden></p>
         <p class="muted" data-i18n="friendsSignIn"></p>
         <div class="ctas"><button class="btn" id="friends-goto-account" data-i18n="goToAccount"></button></div>
       </div>
       <div id="friends-body" hidden>
+        <div class="layout-buttons" id="friends-tabs">
+          <button data-view="day" data-i18n="today"></button>
+          <button data-view="week" data-i18n="last7"></button>
+        </div>
         <div id="friends-list"></div>
         <p class="setting-hint" id="friends-status" aria-live="polite"></p>
         <div class="setting setting-col">
@@ -130,6 +137,7 @@
             <strong class="friend-code" id="my-code"></strong>
             <button type="button" id="btn-copy-code" data-i18n="copy"></button>
           </div>
+          <button type="button" class="btn invite-btn" id="btn-invite" data-i18n="invite"></button>
         </div>
         <div class="setting setting-col">
           <span data-i18n="yourPseudo"></span>
@@ -192,6 +200,18 @@
         </form>
         <div id="account-info" class="account-form" hidden>
           <strong id="account-email"></strong>
+          <div class="reminder">
+            <div class="reminder-row">
+              <span data-i18n="reminder"></span>
+              <button class="toggle" id="reminder-toggle" role="switch"><span></span></button>
+            </div>
+            <label class="reminder-row" id="reminder-hour-row" hidden>
+              <span data-i18n="reminderHour"></span>
+              <select id="reminder-hour"></select>
+            </label>
+            <button type="button" class="link-btn" id="btn-reminder-test" data-i18n="reminderTest" hidden></button>
+            <p class="setting-hint" id="reminder-hint"></p>
+          </div>
           <div class="layout-buttons"><button type="button" id="btn-signout" data-i18n="signOut"></button></div>
         </div>
         <p class="setting-hint" id="account-status" aria-live="polite"></p>

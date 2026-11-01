@@ -55,7 +55,7 @@
     s.settings = Object.assign({ colorBlind: false, webShare: false, hardMode: false, theme: null, layout: {} }, s.settings);
     s.settings.layout = Object.assign({}, s.settings.layout);
     for (const lang of Object.keys(window.LANGS)) {
-      s[lang] = Object.assign({ game: null, stats: {}, archives: {} }, s[lang]);
+      s[lang] = Object.assign({ game: null, stats: {}, archives: {}, free: null }, s[lang]);
     }
     return s;
   }
@@ -77,6 +77,7 @@
     lang: null,
     date: null,
     archive: false,
+    free: false,   // partie libre : mot au hasard, sans stats
     answer: "",
     guesses: [],   // mots déjà validés
     current: "",   // mot en train d'être tapé (" " = case vide)
@@ -97,15 +98,24 @@
   const wordNumber = () => daysBetween(L.firstDay, state.date) + L.numberOffset;
 
   // ---------- Chargement / sauvegarde d'une partie ----------
-  // Partie du jour : store[lang].game — Archives : store[lang].archives[date]
+  // Partie du jour : store[lang].game — Archives : store[lang].archives[date] — Partie libre : store[lang].free
   function savedSlot() {
     const s = store[state.lang];
+    if (state.free) return s.free;
     if (state.archive) return s.archives[state.date];
     return s.game && s.game.date === state.date ? s.game : null;
   }
 
+  // Partie libre : on garde le mot en cours, sinon on en tire un au hasard.
+  function freeAnswer() {
+    const saved = store[state.lang].free;
+    const answers = getDict(state.lang).answers;
+    if (saved && answers.includes(saved.answer)) return saved.answer;
+    return answers[Math.floor(Math.random() * answers.length)];
+  }
+
   function loadGame() {
-    state.answer = wordFor(state.date);
+    state.answer = state.free ? freeAnswer() : wordFor(state.date);
     state.busy = false;
     const saved = savedSlot();
     // On ignore une sauvegarde faite pour un autre mot (ex. : ancienne version du jeu).
@@ -129,7 +139,9 @@
   function persistGame() {
     const s = store[state.lang];
     const slot = { answer: state.answer, guesses: state.guesses, current: state.current, hardMode: state.hardMode };
-    if (state.archive) {
+    if (state.free) {
+      s.free = slot; // ne compte pas dans les stats
+    } else if (state.archive) {
       s.archives[state.date] = slot; // gardé, mais ne compte pas dans les stats
     } else {
       s.game = Object.assign({ date: state.date }, slot);
@@ -229,6 +241,7 @@
     $("#game-title").hidden = state.archive;
     $("#archives-selector").hidden = !state.archive;
     $("#btn-archives").classList.toggle("pressed", state.archive);
+    $("#btn-free").classList.toggle("pressed", state.free);
     if (state.archive) {
       const first = L.firstDay;
       const last = addDays(today(), -1);
@@ -366,10 +379,10 @@
     const graph = $("#graph");
     body.innerHTML = "";
     graph.innerHTML = "";
-    $("#dist-title").hidden = state.archive;
+    $("#dist-title").hidden = state.archive || state.free;
 
-    if (state.archive) {
-      body.appendChild(el("p", "muted", T("archiveNoStats")));
+    if (state.archive || state.free) {
+      body.appendChild(el("p", "muted", T(state.free ? "freeNoStats" : "archiveNoStats")));
     } else {
       const s = G.computeStats(store[state.lang].stats, today());
       const box = el("div", "stats-grid");
@@ -397,7 +410,8 @@
     }
 
     $("#solution").hidden = !state.finished;
-    $("#countdown-box").hidden = !state.finished || state.archive;
+    $("#countdown-box").hidden = !state.finished || state.archive || state.free;
+    $("#btn-new-word").hidden = !state.free || !state.finished;
     if (state.finished) {
       $("#solution-word").textContent = state.answer;
       $("#btn-definition").href = L.definitionUrl(state.answer);
@@ -410,7 +424,7 @@
     const s = G.secondsToMidnight(L.timeZone);
     $("#countdown").textContent = `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
     // Nouveau jour pendant que la page est ouverte → on charge le nouveau mot.
-    if (!state.archive && state.date !== today() && !state.busy) { state.date = today(); loadGame(); }
+    if (!state.archive && !state.free && state.date !== today() && !state.busy) { state.date = today(); loadGame(); }
   }
   setInterval(tick, 1000);
 
@@ -420,7 +434,7 @@
     const light = document.body.classList.contains("light");
     const emoji = { correct: cb ? "🟧" : "🟩", partial: cb ? "🟦" : "🟨", incorrect: light ? "⬜" : "⬛" };
     const score = state.won ? state.guesses.length : "X";
-    const tag = state.archive ? ` (${state.date})` : "";
+    const tag = state.free ? " ∞" : state.archive ? ` (${state.date})` : "";
     const lines = state.guesses.map((g) => evaluate(g, state.answer).map((r) => emoji[r]).join(""));
     return `${L.shareName} #${wordNumber()}${tag} ${score}/${NB_ATTEMPTS}${state.hardMode ? "*" : ""}\n\n${lines.join("\n")}`;
   }
@@ -478,7 +492,7 @@
       webShare: store.settings.webShare,
       lightTheme: isLight(),
     };
-    $$(".toggle").forEach((t) => {
+    $$(".toggle[data-setting]").forEach((t) => {
       const on = !!values[t.dataset.setting];
       t.classList.toggle("on", on);
       t.setAttribute("aria-checked", on);
@@ -501,7 +515,7 @@
     renderAccount();
   }
 
-  $$(".toggle").forEach((t) => t.addEventListener("click", () => {
+  $$(".toggle[data-setting]").forEach((t) => t.addEventListener("click", () => {
     const key = t.dataset.setting;
     if (key === "hardMode") {
       // On ne peut pas activer/désactiver le mode difficile au milieu d'une partie.
@@ -543,6 +557,7 @@
     recovery: false,    // arrivé par le lien « mot de passe oublié »
     pushTimer: null,
     sentSummary: "",    // derniers stats/résultats envoyés aux amis
+    friendsView: "day", // classement : day | week
   };
   const online = () => navigator.onLine !== false;
 
@@ -567,7 +582,10 @@
     $("#account-form").hidden = !ready || !!account.user || account.recovery;
     $("#account-info").hidden = !account.user || account.recovery;
     $("#account-newpass").hidden = !account.recovery;
-    if (account.user) $("#account-email").textContent = account.user.email;
+    if (account.user) {
+      $("#account-email").textContent = account.user.email;
+      renderReminder();
+    }
     $("#account-status").textContent = account.message || (ready ? syncText() : T("offlineNoAccount"));
     $("#account-status").classList.toggle("warn", !online() || account.state === "error");
   }
@@ -624,6 +642,7 @@
     }
     if (!$("#modal-settings").hidden) renderSettings();
     await push();
+    acceptInvite();
   }
 
   // ----- Amis : profil, résultats, classement -----
@@ -670,6 +689,8 @@
     $("#friends-signedout").hidden = signedIn;
     $("#friends-body").hidden = !signedIn;
     $("#friends-lang").textContent = state.lang.toUpperCase();
+    $$("#friends-tabs button").forEach((b) => b.classList.toggle("selected", b.dataset.view === account.friendsView));
+    $("#friends-invited").hidden = signedIn || !pendingInvite();
     if (!signedIn) return;
     const status = $("#friends-status");
     const list = $("#friends-list");
@@ -686,33 +707,55 @@
     const me = account.user.id;
     const lang = state.lang;
     const day = langToday(lang);
+    const from = addDays(day, -6);
+    const week = account.friendsView === "week";
     const { data: links, error } = await account.sb.from("friends").select("friend_id");
     if (error) { status.textContent = T("syncError"); return; }
     const ids = [me].concat(links.map((l) => l.friend_id));
     const [profiles, results] = await Promise.all([
       account.sb.from("profiles").select("user_id, pseudo, stats").in("user_id", ids),
-      account.sb.from("results").select("user_id, won, guesses").eq("lang", lang).eq("day", day).in("user_id", ids),
+      account.sb.from("results").select("user_id, day, won, guesses").eq("lang", lang)
+        .gte("day", from).lte("day", day).in("user_id", ids),
     ]);
     if (profiles.error || results.error) { status.textContent = T("syncError"); return; }
 
     // Pour soi, on prend la version locale (toujours à jour, même avant l'envoi).
-    const mine = store[lang].stats[day];
-    const players = profiles.data.map((p) => p.user_id === me
-      ? { id: me, me: true, pseudo: p.pseudo, today: mine ? { won: mine.won, guesses: mine.n } : null, stats: G.statsSummary(store[lang].stats, day) }
-      : { id: p.user_id, pseudo: p.pseudo, today: results.data.find((r) => r.user_id === p.user_id) || null, stats: (p.stats || {})[lang] });
+    const myStats = store[lang].stats;
+    const myDays = Object.keys(myStats).filter((d) => d >= from && d <= day)
+      .map((d) => ({ day: d, won: myStats[d].won, guesses: myStats[d].n }));
+    const players = profiles.data.map((p) => {
+      const days = p.user_id === me ? myDays : results.data.filter((r) => r.user_id === p.user_id);
+      return {
+        id: p.user_id, me: p.user_id === me, pseudo: p.pseudo, days,
+        today: days.find((d) => d.day === day) || null,
+        stats: p.user_id === me ? G.statsSummary(myStats, day) : (p.stats || {})[lang],
+      };
+    });
 
     list.innerHTML = "";
-    G.rankFriends(players, day).forEach((p, i) => {
+    const ranked = week ? G.rankWeek(players, day) : G.rankFriends(players, day);
+    ranked.forEach((p, i) => {
       const row = el("div", "friend-row" + (p.me ? " me" : ""));
-      const res = !p.today ? el("span", "friend-score none", T("notPlayed"))
-        : el("span", "friend-score " + (p.today.won ? "won" : "lost"), (p.today.won ? p.today.guesses : "X") + "/" + NB_ATTEMPTS);
       const name = el("span", "friend-name", p.pseudo);
       if (p.me) name.appendChild(el("small", "", " (" + T("you") + ")"));
-      const streak = el("span", "friend-streak", (p.streak ? "🔥 " : "") + p.streak);
-      streak.title = T("streakTitle", p.streak, p.maxStreak);
-      const rec = el("span", "friend-record", "🏆 " + p.maxStreak);
-      rec.title = T("maxStreak");
-      row.append(el("span", "friend-rank", i + 1), name, res, streak, rec);
+      let cells;
+      if (week) {
+        const pts = el("span", "friend-score " + (p.points ? "won" : "none"), T("pts", p.points));
+        const played = el("span", "friend-streak", p.played + "/7");
+        played.title = T("daysPlayed", p.played);
+        const wins = el("span", "friend-record", "✓ " + p.wins);
+        wins.title = T("winsWeek", p.wins);
+        cells = [pts, played, wins];
+      } else {
+        const res = !p.today ? el("span", "friend-score none", T("notPlayed"))
+          : el("span", "friend-score " + (p.today.won ? "won" : "lost"), (p.today.won ? p.today.guesses : "X") + "/" + NB_ATTEMPTS);
+        const streak = el("span", "friend-streak", (p.streak ? "🔥 " : "") + p.streak);
+        streak.title = T("streakTitle", p.streak, p.maxStreak);
+        const rec = el("span", "friend-record", "🏆 " + p.maxStreak);
+        rec.title = T("maxStreak");
+        cells = [res, streak, rec];
+      }
+      row.append(el("span", "friend-rank", i + 1), name, ...cells);
       if (!p.me) {
         const rm = el("button", "friend-remove", "×");
         rm.title = rm.ariaLabel = T("removeFriend", p.pseudo);
@@ -727,8 +770,48 @@
       }
       list.appendChild(row);
     });
-    status.textContent = players.length < 2 ? T("noFriends") : "";
+    status.textContent = players.length < 2 ? T("noFriends") : week ? T("pointsHint") : "";
   }
+
+  $$("#friends-tabs button").forEach((b) => b.addEventListener("click", () => {
+    account.friendsView = b.dataset.view;
+    renderFriends();
+  }));
+
+  // ----- Invitation : lien ?ami=CODE qui ajoute l'ami automatiquement -----
+  const PENDING_KEY = "lemot:ami";
+  const inviteParam = new URLSearchParams(location.search).get("ami");
+  if (inviteParam) {
+    try { localStorage.setItem(PENDING_KEY, inviteParam.toUpperCase().slice(0, 8)); } catch (e) { /* mode privé */ }
+    history.replaceState(null, "", location.pathname + location.hash); // on enlève ?ami= de l'adresse
+  }
+  const pendingInvite = () => { try { return localStorage.getItem(PENDING_KEY); } catch (e) { return null; } };
+
+  async function acceptInvite() {
+    const code = pendingInvite();
+    if (!code || !account.user || !online()) return;
+    const { data, error } = await account.sb.rpc("add_friend", { code });
+    try { localStorage.removeItem(PENDING_KEY); } catch (e) { /* rien */ }
+    if (error) {
+      if (!/own_code/.test(error.message)) toast(T("codeNotFound"), 2500);
+      return;
+    }
+    toast(T("friendAdded", data), 2500);
+    openModal("friends");
+  }
+
+  function inviteLink() {
+    return `${location.origin}${location.pathname}?ami=${account.profile.friend_code}#${state.lang}`;
+  }
+
+  $("#btn-invite").addEventListener("click", async () => {
+    if (!account.profile) return;
+    const url = inviteLink();
+    if (navigator.share) {
+      try { await navigator.share({ title: L.shareName, text: T("inviteText"), url }); return; } catch (e) { /* annulé → copie */ }
+    }
+    try { await navigator.clipboard.writeText(url); toast(T("linkCopied")); } catch (e) { toast(T("copyFail")); }
+  });
 
   $("#friend-add").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -764,6 +847,94 @@
     $("#account").scrollIntoView();
   });
 
+  // ----- Rappel quotidien (notifications push) -----
+  // Réglé par appareil (chaque téléphone / ordi a son propre abonnement) : { on, hour }.
+  const REMINDER_KEY = "lemot:rappel";
+  const reminder = (() => { try { return JSON.parse(localStorage.getItem(REMINDER_KEY)) || {}; } catch (e) { return {}; } })();
+  if (reminder.hour == null) reminder.hour = 9;
+  const saveReminder = () => { try { localStorage.setItem(REMINDER_KEY, JSON.stringify(reminder)); } catch (e) { /* mode privé */ } };
+  const pushSupported = () => !!CFG.vapidPublicKey && location.protocol.startsWith("http")
+    && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const b64ToBytes = (s) => {
+    const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4));
+    return Uint8Array.from(b, (c) => c.charCodeAt(0));
+  };
+
+  function renderReminder() {
+    const sel = $("#reminder-hour");
+    if (!sel.options.length) for (let h = 0; h < 24; h++) sel.add(new Option(`${pad(h)}:00`, h));
+    sel.value = reminder.hour;
+    const tg = $("#reminder-toggle");
+    tg.classList.toggle("on", !!reminder.on);
+    tg.setAttribute("aria-checked", !!reminder.on);
+    tg.disabled = !pushSupported();
+    $("#reminder-hour-row").hidden = !reminder.on;
+    $("#btn-reminder-test").hidden = !reminder.on;
+    let hint = "";
+    if (!pushSupported()) hint = T(isIOS ? "reminderIOS" : "reminderUnsupported");
+    else if (Notification.permission === "denied") hint = T("reminderDenied");
+    else if (reminder.on) hint = T("reminderOnHint");
+    $("#reminder-hint").textContent = hint;
+  }
+
+  function saveSubscription(sub) {
+    const j = sub.toJSON();
+    return account.sb.from("push_subscriptions").upsert({
+      endpoint: j.endpoint, user_id: account.user.id, p256dh: j.keys.p256dh, auth: j.keys.auth,
+      lang: state.lang, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", hour: reminder.hour,
+    });
+  }
+
+  async function enableReminder() {
+    if ((await Notification.requestPermission()) !== "granted") return toast(T("reminderDenied"), 3000);
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription())
+      || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(CFG.vapidPublicKey) }));
+    const { error } = await saveSubscription(sub);
+    if (error) return toast(T("syncError"), 2500);
+    reminder.on = true;
+    saveReminder();
+    toast(T("reminderOn", `${pad(reminder.hour)}:00`), 2500);
+  }
+
+  async function disableReminder() {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await account.sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+      await sub.unsubscribe();
+    }
+    reminder.on = false;
+    saveReminder();
+  }
+
+  /** Heure ou langue changée : on met l'abonnement à jour. */
+  async function updateReminder() {
+    if (!reminder.on || !account.user || !pushSupported() || !online()) return;
+    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    if (sub) await saveSubscription(sub);
+    else { reminder.on = false; saveReminder(); renderAccount(); }
+  }
+
+  $("#reminder-toggle").addEventListener("click", async () => {
+    if (!account.user || !pushSupported()) return;
+    const tg = $("#reminder-toggle");
+    tg.disabled = true;
+    try { await (reminder.on ? disableReminder() : enableReminder()); }
+    catch (e) { toast(T("reminderUnsupported"), 3000); }
+    renderReminder();
+  });
+  $("#reminder-hour").addEventListener("change", (e) => {
+    reminder.hour = +e.target.value;
+    saveReminder();
+    updateReminder();
+  });
+  $("#btn-reminder-test").addEventListener("click", async () => {
+    const { error } = await account.sb.functions.invoke("daily-reminder", { body: { test: true } });
+    toast(T(error ? "syncError" : "reminderTestSent"), 2500);
+  });
+
   // ----- Connexion -----
   async function initAccount() {
     if (!CFG.url || !CFG.anonKey || account.sb) return; // pas configuré : jeu 100 % local
@@ -784,6 +955,8 @@
       if (!user) Object.assign(account, { profile: null, dirty: false, syncedAt: null, state: "idle", sentSummary: "" });
       // (pas d'appel Supabase directement dans ce callback : on décale)
       if (changed && user) setTimeout(pull, 0);
+      // Arrivé par un lien d'invitation sans être connecté : on explique quoi faire.
+      if (event === "INITIAL_SESSION" && !user && pendingInvite() && L) setTimeout(() => openModal("friends"), 0);
       renderAccount();
     });
     renderAccount();
@@ -853,6 +1026,7 @@
 
   $("#btn-signout").addEventListener("click", async () => {
     if (account.pushTimer) await push();
+    if (reminder.on) await disableReminder().catch(() => {}); // plus de rappels pour ce compte ici
     await account.sb.auth.signOut(); // les données restent sur cet appareil
     setMessage("");
   });
@@ -861,8 +1035,25 @@
   $("#btn-archives").addEventListener("click", () => {
     if (state.busy) return;
     state.archive = !state.archive;
+    state.free = false;
     state.date = state.archive ? addDays(today(), -1) : today();
     loadGame();
+  });
+
+  // ---------- Partie libre ----------
+  $("#btn-free").addEventListener("click", () => {
+    if (state.busy) return;
+    state.free = !state.free;
+    state.archive = false;
+    state.date = today();
+    loadGame();
+    toast(T(state.free ? "freeOn" : "freeOff"), 2000);
+  });
+  $("#btn-new-word").addEventListener("click", () => {
+    store[state.lang].free = null;
+    closeModals();
+    loadGame();
+    persistGame();
   });
   const goArchive = (k) => {
     if (state.busy || !k || k < L.firstDay || k > addDays(today(), -1)) return;
@@ -908,7 +1099,7 @@
     state.lang = store.lang = lang;
     L = window.LANGS[lang];
     save();
-    state.archive = false;
+    state.archive = state.free = false;
     state.date = today();
     applyTexts();
     buildKeyboard();
@@ -917,6 +1108,7 @@
     closeModals();
     loadGame();
     tick();
+    if (account.user) updateReminder(); // le rappel suit la langue choisie
     if (location.hash !== "#" + lang && !location.hash.includes("=")) history.replaceState(null, "", "#" + lang);
   }
 

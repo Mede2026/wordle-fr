@@ -120,3 +120,63 @@ grant execute on function public.is_friend(uuid), public.add_friend(text), publi
 grant select, insert, update on public.profiles to authenticated;
 grant select on public.friends to authenticated;
 grant select, insert, update on public.results to authenticated;
+
+-- ---------- Rappel quotidien (notifications push) ----------
+
+-- Abonnements aux notifications (un par appareil)
+create table if not exists public.push_subscriptions (
+  endpoint   text primary key,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  p256dh     text not null,
+  auth       text not null,
+  lang       text not null check (lang in ('fr', 'en')),
+  tz         text not null,               -- fuseau de l'appareil (ex. America/Montreal)
+  hour       smallint not null check (hour between 0 and 23),
+  last_sent  date,                        -- dernier rappel envoyé (date locale)
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subscriptions_user_idx on public.push_subscriptions (user_id);
+alter table public.push_subscriptions enable row level security;
+
+drop policy if exists "voir ses abonnements" on public.push_subscriptions;
+create policy "voir ses abonnements" on public.push_subscriptions
+  for select to authenticated using (user_id = (select auth.uid()));
+drop policy if exists "créer ses abonnements" on public.push_subscriptions;
+create policy "créer ses abonnements" on public.push_subscriptions
+  for insert to authenticated with check (user_id = (select auth.uid()));
+drop policy if exists "modifier ses abonnements" on public.push_subscriptions;
+create policy "modifier ses abonnements" on public.push_subscriptions
+  for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+drop policy if exists "supprimer ses abonnements" on public.push_subscriptions;
+create policy "supprimer ses abonnements" on public.push_subscriptions
+  for delete to authenticated using (user_id = (select auth.uid()));
+
+grant select, insert, update, delete on public.push_subscriptions to authenticated;
+grant select, update, delete on public.push_subscriptions to service_role;
+
+-- Secrets lus seulement par la fonction serveur (service_role) : clés VAPID.
+-- Remplir une fois (générer une paire de clés VAPID, ex. `npx web-push generate-vapid-keys`) :
+--   insert into public.app_secrets values ('vapid_public', '…'), ('vapid_private', '…');
+-- La clé publique va aussi dans assets/js/config.js (vapidPublicKey).
+create table if not exists public.app_secrets (
+  name  text primary key,
+  value text not null
+);
+alter table public.app_secrets enable row level security; -- aucune règle : invisible pour les joueurs
+revoke all on public.app_secrets from anon, authenticated;
+grant select on public.app_secrets to service_role;
+
+-- La fonction serveur lit aussi profils et résultats (série, déjà joué ?)
+grant select on public.profiles, public.results to service_role;
+
+-- Appel de la fonction supabase/functions/daily-reminder toutes les heures
+-- (remplacer <projet> par l'identifiant du projet Supabase)
+create extension if not exists pg_net;
+create extension if not exists pg_cron;
+-- select cron.schedule('rappel-quotidien', '0 * * * *', $$
+--   select net.http_post(
+--     url := 'https://<projet>.supabase.co/functions/v1/daily-reminder',
+--     headers := '{"Content-Type": "application/json"}'::jsonb,
+--     body := '{}'::jsonb,
+--     timeout_milliseconds := 30000)
+-- $$);

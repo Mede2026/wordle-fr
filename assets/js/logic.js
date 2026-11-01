@@ -208,10 +208,31 @@
       .sort((a, b) => score(a) - score(b) || b.streak - a.streak || a.pseudo.localeCompare(b.pseudo));
   }
 
+  /** Points d'une partie : 6 en 1 essai … 1 en 6 essais, 0 si perdu. */
+  const points = (r) => (r && r.won ? NB_ATTEMPTS + 1 - r.guesses : 0);
+
+  /**
+   * Classement sur les 7 derniers jours (aujourd'hui compris).
+   * players : [{ id, pseudo, me, days: [{ day, won, guesses }] }]
+   */
+  function rankWeek(players, today) {
+    const from = addDays(today, -6);
+    return players
+      .map((p) => {
+        const week = (p.days || []).filter((d) => d.day >= from && d.day <= today);
+        return Object.assign({}, p, {
+          points: week.reduce((sum, d) => sum + points(d), 0),
+          wins: week.filter((d) => d.won).length,
+          played: week.length,
+        });
+      })
+      .sort((a, b) => b.points - a.points || b.wins - a.wins || a.pseudo.localeCompare(b.pseudo));
+  }
+
   return {
     NB_LETTERS, NB_ATTEMPTS,
     pad, daysBetween, addDays, todayKey, secondsToMidnight,
     shuffled, chunk5, wordFor, evaluate, hardModeError, computeStats, mergeStores,
-    statsSummary, rankFriends,
+    statsSummary, rankFriends, points, rankWeek,
   };
 });

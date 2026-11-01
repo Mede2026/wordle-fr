@@ -15,12 +15,16 @@ Au premier lancement, choisis ta langue. Tu peux la changer avec le bouton **FR 
   - EN : liste mélangée une fois, aucun mot ne revient avant que toute la liste soit passée (minuit heure locale)
 - Statistiques séparées FR / EN (parties, % de victoires, séries, distribution)
 - Mode **Archives** : rejoue les mots des jours précédents (progression sauvegardée, ✓ quand fini)
+- **Partie libre** ∞ : un mot au hasard, autant de fois que tu veux, sans toucher aux stats
 - La ligne en cours est sauvegardée si tu fermes la page
 - Flèches **← →** (ou clic sur une case) pour corriger une lettre au milieu du mot
 - **Compte en ligne** (optionnel) : stats, archives et réglages synchronisés sur tous tes appareils
   - état de synchro clair (pastille orange sur ⚙️ hors-ligne, tout est renvoyé au retour du réseau)
   - mot de passe oublié (lien par courriel)
-- **Classement entre amis** 👥 : score du jour, série 🔥 et record 🏆 de chacun ; on s'ajoute avec un code ami
+- **Classement entre amis** 👥 : score du jour, série 🔥 et record 🏆 de chacun, ou points sur 7 jours
+  (6 pts en 1 essai … 1 pt en 6, 0 si perdu) ; on s'ajoute avec un code ami ou un **lien d'invitation**
+- **Rappel quotidien** 🔔 (notification) à l'heure choisie, seulement si tu n'as pas encore joué
+  (sur iPhone : ajouter d'abord le jeu à l'écran d'accueil)
 - Mode **difficile**, mode **daltonien**, **thème clair**
 - Claviers AZERTY, BÉPO, QWERTY, QWERTZ (FR) — QWERTY, AZERTY, DVORAK (EN)
 - Accents ignorés au clavier (é → E)
@@ -46,6 +50,12 @@ Optionnel : sans configuration, le jeu marche comme avant (tout reste sur l'appa
 Ensuite, dans le jeu : ⚙️ Paramètres → **Compte** → *Créer un compte* (courriel + mot de passe).
 Sur un autre appareil, *Se connecter* avec les mêmes identifiants : les données des deux appareils sont fusionnées
 (aucune partie perdue) et se resynchronisent à chaque retour sur la page.
+
+### Rappel quotidien (notifications)
+
+Déjà en place sur le projet `wordle-fr` : la fonction [`supabase/functions/daily-reminder`](supabase/functions/daily-reminder/index.ts)
+est appelée chaque heure par `pg_cron` et envoie les rappels (Web Push). Pour un autre projet : voir la fin de
+[`supabase/schema.sql`](supabase/schema.sql) (clés VAPID dans la table `app_secrets`, clé publique dans `config.js`).
 
 ## Mettre en ligne (GitHub Pages)
 
@@ -73,7 +83,8 @@ assets/js/config.js   adresse et clé publique Supabase (compte en ligne, option
 assets/js/words-*.js  listes de mots, chargées seulement pour la langue choisie
 assets/js/vendor/     seedrandom (MIT) — même tirage que wordle.louan.me ; supabase-js 2.49.4 (MIT)
 tests/                tests automatiques (node --test)
-supabase/schema.sql   table de sauvegarde en ligne (à coller dans Supabase)
+supabase/schema.sql   tables Supabase : sauvegarde, amis, résultats, rappels (à coller dans Supabase)
+supabase/functions/   fonction serveur du rappel quotidien
 assets/icons, img     icônes
 sw.js, manifest.json  mode hors-ligne / installation (PWA)
 ```

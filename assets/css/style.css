@@ -425,6 +425,22 @@ main {
 }
 .inline-form input:focus { outline: 2px solid var(--correct); outline-offset: -1px; }
 .inline-form button { padding: 7px 12px; border-radius: 5px; background: var(--btn-bg); color: var(--white); font-size: 13px; font-weight: 700; }
+#friends-tabs { margin-bottom: 4px; }
+.reminder { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; }
+.reminder-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 15px; }
+.reminder-row[hidden] { display: none; }
+.reminder select {
+  padding: 5px 8px;
+  border: 1px solid var(--border-filled);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--white);
+  font: inherit;
+  font-size: 15px;
+}
+.toggle:disabled { opacity: 0.4; }
+.invite-btn { margin-top: 10px; width: 100%; }
+.invite-note { margin-bottom: 10px; padding: 10px; border-radius: 6px; background: var(--stat-bg); color: var(--white); }
 .friend-code { flex: 1; font-size: 20px; letter-spacing: 3px; color: var(--white); font-variant-numeric: tabular-nums; }
 @media (max-width: 380px) {
   .friend-row { grid-template-columns: 18px minmax(0, 1fr) auto 38px 22px; }

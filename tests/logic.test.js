@@ -203,3 +203,14 @@ test("rankFriends : une série plus vieille qu'hier est remise à 0", () => {
   assert.equal(p.streak, 0);
   assert.equal(p.maxStreak, 8);
 });
+
+test("rankWeek : points sur 7 jours (6 pts en 1 essai … 0 si perdu)", () => {
+  const today = "2026-11-07";
+  const ranked = G.rankWeek([
+    { id: "a", pseudo: "Alice", days: [{ day: "2026-11-07", won: true, guesses: 2 }, { day: "2026-11-06", won: false, guesses: 6 }] },
+    { id: "b", pseudo: "Bob", days: [{ day: "2026-11-01", won: true, guesses: 3 }, { day: "2026-11-02", won: true, guesses: 6 }, { day: "2026-10-31", won: true, guesses: 1 }] },
+    { id: "c", pseudo: "Chloé", days: [] },
+  ], today);
+  assert.deepEqual(ranked.map((p) => [p.id, p.points, p.played]), [["b", 5, 2], ["a", 5, 2], ["c", 0, 0]]);
+  // à égalité de points : le plus de victoires d'abord (Bob 2, Alice 1) ; le 31/10 est hors semaine
+});
