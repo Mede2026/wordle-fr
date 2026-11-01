@@ -378,6 +378,58 @@ main {
 .account-form input:focus { outline: 2px solid var(--correct); outline-offset: -1px; }
 .account-form strong { font-size: 14px; word-break: break-all; }
 .layout-buttons button:disabled { opacity: 0.5; }
+.link-btn { align-self: flex-start; padding: 2px 0; color: var(--hint); font-size: 13px; text-decoration: underline; background: none; }
+#account-status.warn { color: var(--partial); }
+
+/* Pastille de synchro (hors-ligne / erreur) */
+#btn-settings { position: relative; }
+.badge { position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--partial); }
+.badge[hidden] { display: none; }
+
+/* Amis */
+.lang-tag { font-size: 12px; color: var(--hint); vertical-align: middle; }
+#friends-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.friend-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto 44px 44px 22px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--stat-bg);
+  color: var(--white);
+  font-size: 14px;
+}
+.friend-row.me { outline: 1px solid var(--correct); }
+.friend-rank { font-weight: 700; color: var(--hint); }
+.friend-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.friend-name small { font-weight: 400; color: var(--hint); }
+.friend-score { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 13px; color: #fff; background: var(--dark); }
+.friend-score.won { background: var(--correct); }
+.friend-score.none { background: none; color: var(--hint); font-weight: 400; font-size: 12px; padding: 0; }
+.friend-streak, .friend-record { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+.friend-record { color: var(--hint); }
+.friend-remove { color: var(--hint); font-size: 18px; line-height: 1; background: none; }
+.friend-remove:hover { color: var(--white); }
+.inline-form { display: flex; gap: 8px; width: 100%; margin-top: 8px; align-items: center; }
+.inline-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border-filled);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--white);
+  font: inherit;
+  font-size: 16px;
+}
+.inline-form input:focus { outline: 2px solid var(--correct); outline-offset: -1px; }
+.inline-form button { padding: 7px 12px; border-radius: 5px; background: var(--btn-bg); color: var(--white); font-size: 13px; font-weight: 700; }
+.friend-code { flex: 1; font-size: 20px; letter-spacing: 3px; color: var(--white); font-variant-numeric: tabular-nums; }
+@media (max-width: 380px) {
+  .friend-row { grid-template-columns: 18px minmax(0, 1fr) auto 38px 22px; }
+  .friend-record { display: none; }
+}
 .credits { margin-top: 20px; }
 .credits h3 { color: var(--white); font-size: 16px; margin-bottom: 8px; }
 

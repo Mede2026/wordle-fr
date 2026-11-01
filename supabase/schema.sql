@@ -1,4 +1,4 @@
--- Le Mot / Wordle — sauvegarde en ligne (une ligne par compte).
+-- Le Mot / Wordle — sauvegarde en ligne, amis et classement.
 -- À coller une seule fois dans Supabase : SQL Editor → New query → Run.
 
 create table if not exists public.saves (
@@ -21,3 +21,102 @@ create policy "créer sa sauvegarde" on public.saves
 drop policy if exists "modifier sa sauvegarde" on public.saves;
 create policy "modifier sa sauvegarde" on public.saves
   for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+grant select, insert, update on public.saves to authenticated;
+
+-- ---------- Amis et classement ----------
+
+-- Profil visible par les amis : pseudo + code ami
+create table if not exists public.profiles (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  pseudo      text not null check (char_length(pseudo) between 1 and 20),
+  friend_code text not null unique default upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)),
+  stats       jsonb not null default '{}'::jsonb, -- { fr: { streak, maxStreak, played, wins, last }, en: … }
+  created_at  timestamptz not null default now()
+);
+alter table public.profiles add column if not exists stats jsonb not null default '{}'::jsonb;
+
+-- Amitiés (toujours dans les deux sens)
+create table if not exists public.friends (
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  friend_id  uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, friend_id),
+  check (user_id <> friend_id)
+);
+create index if not exists friends_friend_id_idx on public.friends (friend_id);
+
+-- Résultat de chaque mot du jour (pour le classement et les séries)
+create table if not exists public.results (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  lang    text not null check (lang in ('fr', 'en')),
+  day     date not null,
+  won     boolean not null,
+  guesses smallint not null check (guesses between 1 and 6),
+  hard    boolean not null default false,
+  primary key (user_id, lang, day)
+);
+create index if not exists results_lang_day_idx on public.results (lang, day);
+
+alter table public.profiles enable row level security;
+alter table public.friends  enable row level security;
+alter table public.results  enable row level security;
+
+create or replace function public.is_friend(other uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.friends where user_id = (select auth.uid()) and friend_id = other);
+$$;
+
+drop policy if exists "voir son profil et ceux de ses amis" on public.profiles;
+create policy "voir son profil et ceux de ses amis" on public.profiles
+  for select to authenticated using (user_id = (select auth.uid()) or public.is_friend(user_id));
+drop policy if exists "créer son profil" on public.profiles;
+create policy "créer son profil" on public.profiles
+  for insert to authenticated with check (user_id = (select auth.uid()));
+drop policy if exists "modifier son profil" on public.profiles;
+create policy "modifier son profil" on public.profiles
+  for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+drop policy if exists "voir ses amitiés" on public.friends;
+create policy "voir ses amitiés" on public.friends
+  for select to authenticated using (user_id = (select auth.uid()));
+
+drop policy if exists "voir ses résultats et ceux de ses amis" on public.results;
+create policy "voir ses résultats et ceux de ses amis" on public.results
+  for select to authenticated using (user_id = (select auth.uid()) or public.is_friend(user_id));
+drop policy if exists "ajouter ses résultats" on public.results;
+create policy "ajouter ses résultats" on public.results
+  for insert to authenticated with check (user_id = (select auth.uid()));
+drop policy if exists "modifier ses résultats" on public.results;
+create policy "modifier ses résultats" on public.results
+  for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+-- Ajouter un ami avec son code (les profils des inconnus restent invisibles)
+create or replace function public.add_friend(code text)
+returns text language plpgsql security definer set search_path = '' as $$
+declare
+  me uuid := auth.uid();
+  other uuid;
+  other_pseudo text;
+begin
+  if me is null then raise exception 'not_signed_in'; end if;
+  select user_id, pseudo into other, other_pseudo from public.profiles where friend_code = upper(trim(code));
+  if other is null then raise exception 'code_not_found'; end if;
+  if other = me then raise exception 'own_code'; end if;
+  insert into public.friends (user_id, friend_id) values (me, other), (other, me) on conflict do nothing;
+  return other_pseudo;
+end;
+$$;
+
+create or replace function public.remove_friend(other uuid)
+returns void language sql security definer set search_path = '' as $$
+  delete from public.friends
+  where (user_id = (select auth.uid()) and friend_id = other)
+     or (user_id = other and friend_id = (select auth.uid()));
+$$;
+
+revoke execute on function public.is_friend(uuid), public.add_friend(text), public.remove_friend(uuid) from public, anon;
+grant execute on function public.is_friend(uuid), public.add_friend(text), public.remove_friend(uuid) to authenticated;
+
+grant select, insert, update on public.profiles to authenticated;
+grant select on public.friends to authenticated;
+grant select, insert, update on public.results to authenticated;

@@ -4,6 +4,6 @@
      anonKey = clé « anon » / « publishable » (publique, faite pour être dans le site)
    Laisser vide = jeu sans compte, tout reste sur l'appareil. */
 window.SUPABASE_CONFIG = {
-  url: "",
-  anonKey: "",
+  url: "https://yiubbduljiqnamtcjqkd.supabase.co",
+  anonKey: "sb_publishable_0Pl1_nSsDFWR3ItriA5v3w_rJdxyJ9A",
 };

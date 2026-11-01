@@ -182,9 +182,36 @@
     return out;
   }
 
+  /** Résumé partagé avec les amis : { streak, maxStreak, played, wins, last }. */
+  function statsSummary(games, today) {
+    const s = computeStats(games, today);
+    const days = Object.keys(games).sort();
+    return { streak: s.streak, maxStreak: s.maxStreak, played: s.played, wins: s.wins, last: days[days.length - 1] || null };
+  }
+
+  /**
+   * Classement entre amis pour une langue.
+   * players : [{ id, pseudo, me, today: { won, guesses } | null, stats: statsSummary | undefined }]
+   * Ordre : gagné aujourd'hui (moins d'essais d'abord), puis perdu, puis pas encore joué ;
+   * à égalité, la plus longue série.
+   */
+  function rankFriends(players, today) {
+    const yesterday = addDays(today, -1);
+    const score = (p) => (!p.today ? 99 : p.today.won ? p.today.guesses : 50);
+    return players
+      .map((p) => {
+        const st = p.stats || {};
+        // Une série dont la dernière partie date d'avant-hier est cassée.
+        const alive = st.last === today || st.last === yesterday;
+        return Object.assign({}, p, { streak: alive ? st.streak || 0 : 0, maxStreak: st.maxStreak || 0 });
+      })
+      .sort((a, b) => score(a) - score(b) || b.streak - a.streak || a.pseudo.localeCompare(b.pseudo));
+  }
+
   return {
     NB_LETTERS, NB_ATTEMPTS,
     pad, daysBetween, addDays, todayKey, secondsToMidnight,
     shuffled, chunk5, wordFor, evaluate, hardModeError, computeStats, mergeStores,
+    statsSummary, rankFriends,
   };
 });

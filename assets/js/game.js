@@ -23,15 +23,18 @@
   // ---------- Listes de mots : chargées seulement quand la langue est choisie ----------
   // (une balise <script> ajoutée à la volée marche aussi en ouvrant index.html sans serveur)
   const loading = {};
-  function loadWords(lang) {
-    if (window.WORDS && window.WORDS[lang]) return Promise.resolve();
-    return (loading[lang] = loading[lang] || new Promise((resolve, reject) => {
+  function loadScript(src) {
+    return (loading[src] = loading[src] || new Promise((resolve, reject) => {
       const s = document.createElement("script");
-      s.src = `assets/js/words-${lang}.js`;
+      s.src = src;
       s.onload = resolve;
-      s.onerror = () => { delete loading[lang]; reject(new Error("words " + lang)); };
+      s.onerror = () => { delete loading[src]; s.remove(); reject(new Error(src)); };
       document.head.appendChild(s);
     }));
+  }
+  function loadWords(lang) {
+    if (window.WORDS && window.WORDS[lang]) return Promise.resolve();
+    return loadScript(`assets/js/words-${lang}.js`);
   }
 
   const dict = {};
@@ -130,7 +133,7 @@
       s.archives[state.date] = slot; // gardé, mais ne compte pas dans les stats
     } else {
       s.game = Object.assign({ date: state.date }, slot);
-      if (state.finished) s.stats[state.date] = { won: state.won, n: state.guesses.length };
+      if (state.finished) s.stats[state.date] = { won: state.won, n: state.guesses.length, hard: state.hardMode };
     }
     save();
   }
@@ -452,6 +455,7 @@
     closeModals();
     if (name === "stats") renderStats();
     if (name === "settings") renderSettings();
+    if (name === "friends") renderFriends();
     $(`#modal-${name}`).hidden = false;
   }
   function closeModals() { $$(".modal").forEach((m) => (m.hidden = true)); }
@@ -462,6 +466,7 @@
   $("#btn-help").addEventListener("click", () => openModal("help"));
   $("#btn-stats").addEventListener("click", () => openModal("stats"));
   $("#btn-settings").addEventListener("click", () => openModal("settings"));
+  $("#btn-friends").addEventListener("click", () => openModal("friends"));
 
   // ---------- Paramètres ----------
   const isLight = () => store.settings.theme === "light"; // sombre par défaut (look original)
@@ -523,45 +528,90 @@
 
   // ---------- Compte en ligne (Supabase) ----------
   // Courriel + mot de passe. La sauvegarde complète (store) est une ligne de la table « saves ».
-  // À chaque connexion / retour sur la page : on récupère, on fusionne (mergeStores), on renvoie.
+  // À chaque connexion, retour sur la page ou retour du réseau : on récupère, on fusionne (mergeStores), on renvoie.
+  // Pour les amis : un profil (pseudo, code ami, résumé des séries) + les résultats des derniers jours.
   const CFG = window.SUPABASE_CONFIG || {};
-  const SDK_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js";
-  const account = { sb: null, user: null, status: "", pushTimer: null };
+  const account = {
+    sb: null,
+    user: null,
+    profile: null,      // { pseudo, friend_code }
+    state: "idle",      // idle | syncing | synced | error
+    syncedAt: null,
+    dirty: false,       // modifications pas encore envoyées
+    version: 0,         // +1 à chaque sauvegarde (pour savoir si un envoi est toujours à jour)
+    message: "",        // message du formulaire (erreur de connexion, courriel envoyé…)
+    recovery: false,    // arrivé par le lien « mot de passe oublié »
+    pushTimer: null,
+    sentSummary: "",    // derniers stats/résultats envoyés aux amis
+  };
+  const online = () => navigator.onLine !== false;
 
-  function setAccountStatus(key, ...args) {
-    account.status = key && L ? T(key, ...args) : "";
-    if (!$("#modal-settings").hidden) renderAccount();
+  function syncText() {
+    if (!L || !account.user) return "";
+    if (!online()) return T(account.dirty ? "offlinePending" : "offline");
+    if (account.state === "syncing") return T("syncing");
+    if (account.state === "error") return T("syncError");
+    if (account.syncedAt) return T("syncedAt", account.syncedAt.toLocaleTimeString(L.dateLocale, { hour: "2-digit", minute: "2-digit" }));
+    return "";
   }
 
   function renderAccount() {
-    const box = $("#account");
-    box.hidden = !account.sb;
-    if (!account.sb) return;
-    $("#account-form").hidden = !!account.user;
-    $("#account-info").hidden = !account.user;
-    $("#account-status").textContent = account.status;
+    // Pastille sur ⚙️ : hors-ligne ou synchro en échec.
+    const badge = $("#sync-badge");
+    badge.hidden = !account.user || (online() && account.state !== "error");
+    badge.title = syncText();
+    $("#btn-friends").hidden = !CFG.url;
+    $("#account").hidden = !CFG.url;
+    if (!CFG.url || !L) return;
+    const ready = !!account.sb;
+    $("#account-form").hidden = !ready || !!account.user || account.recovery;
+    $("#account-info").hidden = !account.user || account.recovery;
+    $("#account-newpass").hidden = !account.recovery;
     if (account.user) $("#account-email").textContent = account.user.email;
+    $("#account-status").textContent = account.message || (ready ? syncText() : T("offlineNoAccount"));
+    $("#account-status").classList.toggle("warn", !online() || account.state === "error");
+  }
+
+  function setMessage(key, ...args) {
+    account.message = key ? T(key, ...args) : "";
+    renderAccount();
   }
 
   function schedulePush() {
     if (!account.user) return;
+    account.dirty = true;
+    account.version++;
     clearTimeout(account.pushTimer);
     account.pushTimer = setTimeout(push, 1500); // on regroupe les sauvegardes rapprochées
   }
 
   async function push() {
-    if (!account.user) return;
     clearTimeout(account.pushTimer);
+    account.pushTimer = null;
+    if (!account.user || !online()) return renderAccount(); // renvoyé au retour du réseau
+    const version = account.version;
+    account.state = "syncing";
+    renderAccount();
     const { error } = await account.sb.from("saves")
       .upsert({ user_id: account.user.id, data: store, updated_at: new Date().toISOString() });
-    setAccountStatus(error ? "syncError" : "syncedAt", new Date().toLocaleTimeString(L ? L.dateLocale : undefined, { hour: "2-digit", minute: "2-digit" }));
+    account.state = error ? "error" : "synced";
+    if (!error) {
+      account.syncedAt = new Date();
+      if (account.version === version) account.dirty = false;
+    }
+    renderAccount();
+    if (!error) shareResults();
   }
 
   async function pull() {
-    if (!account.user) return;
-    setAccountStatus("syncing");
+    if (!account.user || !online()) return renderAccount();
+    account.state = "syncing";
+    renderAccount();
     const { data, error } = await account.sb.from("saves").select("data").eq("user_id", account.user.id).maybeSingle();
-    if (error) return setAccountStatus("syncError");
+    if (error) {
+      account.state = "error";
+      return renderAccount();
+    }
     const merged = withDefaults(G.mergeStores(store, data && data.data));
     merged.lang = store.lang; // on reste dans la langue affichée
     for (const k of Object.keys(store)) delete store[k];
@@ -576,31 +626,193 @@
     await push();
   }
 
+  // ----- Amis : profil, résultats, classement -----
+  async function ensureProfile() {
+    if (account.profile) return account.profile;
+    const id = account.user.id;
+    let { data } = await account.sb.from("profiles").select("pseudo, friend_code").eq("user_id", id).maybeSingle();
+    if (!data) {
+      const pseudo = (account.user.email || "").split("@")[0].slice(0, 20) || "Joueur";
+      ({ data } = await account.sb.from("profiles").insert({ user_id: id, pseudo }).select("pseudo, friend_code").single());
+    }
+    return (account.profile = data || null);
+  }
+
+  const langToday = (lang) => G.todayKey(window.LANGS[lang].timeZone);
+
+  /** Envoie le résumé des séries (profil) et les résultats des 7 derniers jours, s'ils ont changé. */
+  async function shareResults() {
+    const id = account.user.id;
+    const stats = {};
+    const rows = [];
+    for (const lang of Object.keys(window.LANGS)) {
+      const games = store[lang].stats;
+      const day0 = langToday(lang);
+      stats[lang] = G.statsSummary(games, day0);
+      for (let i = 0; i < 7; i++) {
+        const day = addDays(day0, -i);
+        const g = games[day];
+        if (g) rows.push({ user_id: id, lang, day, won: !!g.won, guesses: g.n, hard: !!g.hard });
+      }
+    }
+    const summary = JSON.stringify([id, stats, rows]);
+    if (summary === account.sentSummary) return;
+    if (!(await ensureProfile())) return;
+    const [a, b] = await Promise.all([
+      rows.length ? account.sb.from("results").upsert(rows) : { error: null },
+      account.sb.from("profiles").update({ stats }).eq("user_id", id),
+    ]);
+    if (!a.error && !b.error) account.sentSummary = summary;
+  }
+
+  async function renderFriends() {
+    const signedIn = !!account.user;
+    $("#friends-signedout").hidden = signedIn;
+    $("#friends-body").hidden = !signedIn;
+    $("#friends-lang").textContent = state.lang.toUpperCase();
+    if (!signedIn) return;
+    const status = $("#friends-status");
+    const list = $("#friends-list");
+    if (!online()) {
+      status.textContent = T("offlineFriends");
+      return;
+    }
+    status.textContent = T("loading");
+    const profile = await ensureProfile();
+    if (!profile) { status.textContent = T("syncError"); return; }
+    $("#my-code").textContent = profile.friend_code;
+    if (document.activeElement !== $("#pseudo")) $("#pseudo").value = profile.pseudo;
+
+    const me = account.user.id;
+    const lang = state.lang;
+    const day = langToday(lang);
+    const { data: links, error } = await account.sb.from("friends").select("friend_id");
+    if (error) { status.textContent = T("syncError"); return; }
+    const ids = [me].concat(links.map((l) => l.friend_id));
+    const [profiles, results] = await Promise.all([
+      account.sb.from("profiles").select("user_id, pseudo, stats").in("user_id", ids),
+      account.sb.from("results").select("user_id, won, guesses").eq("lang", lang).eq("day", day).in("user_id", ids),
+    ]);
+    if (profiles.error || results.error) { status.textContent = T("syncError"); return; }
+
+    // Pour soi, on prend la version locale (toujours à jour, même avant l'envoi).
+    const mine = store[lang].stats[day];
+    const players = profiles.data.map((p) => p.user_id === me
+      ? { id: me, me: true, pseudo: p.pseudo, today: mine ? { won: mine.won, guesses: mine.n } : null, stats: G.statsSummary(store[lang].stats, day) }
+      : { id: p.user_id, pseudo: p.pseudo, today: results.data.find((r) => r.user_id === p.user_id) || null, stats: (p.stats || {})[lang] });
+
+    list.innerHTML = "";
+    G.rankFriends(players, day).forEach((p, i) => {
+      const row = el("div", "friend-row" + (p.me ? " me" : ""));
+      const res = !p.today ? el("span", "friend-score none", T("notPlayed"))
+        : el("span", "friend-score " + (p.today.won ? "won" : "lost"), (p.today.won ? p.today.guesses : "X") + "/" + NB_ATTEMPTS);
+      const name = el("span", "friend-name", p.pseudo);
+      if (p.me) name.appendChild(el("small", "", " (" + T("you") + ")"));
+      const streak = el("span", "friend-streak", (p.streak ? "🔥 " : "") + p.streak);
+      streak.title = T("streakTitle", p.streak, p.maxStreak);
+      const rec = el("span", "friend-record", "🏆 " + p.maxStreak);
+      rec.title = T("maxStreak");
+      row.append(el("span", "friend-rank", i + 1), name, res, streak, rec);
+      if (!p.me) {
+        const rm = el("button", "friend-remove", "×");
+        rm.title = rm.ariaLabel = T("removeFriend", p.pseudo);
+        rm.addEventListener("click", async () => {
+          if (!confirm(T("removeFriend", p.pseudo) + " ?")) return;
+          await account.sb.rpc("remove_friend", { other: p.id });
+          renderFriends();
+        });
+        row.appendChild(rm);
+      } else {
+        row.appendChild(el("span", "friend-remove"));
+      }
+      list.appendChild(row);
+    });
+    status.textContent = players.length < 2 ? T("noFriends") : "";
+  }
+
+  $("#friend-add").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const code = $("#friend-code").value.trim();
+    if (!code || !account.user) return;
+    const { data, error } = await account.sb.rpc("add_friend", { code });
+    if (error) {
+      const msg = /code_not_found/.test(error.message) ? "codeNotFound" : /own_code/.test(error.message) ? "ownCode" : "syncError";
+      return toast(T(msg), 2500);
+    }
+    $("#friend-code").value = "";
+    toast(T("friendAdded", data), 2000);
+    renderFriends();
+  });
+
+  $("#pseudo-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pseudo = $("#pseudo").value.trim().slice(0, 20);
+    if (!pseudo || !account.user) return;
+    const { error } = await account.sb.from("profiles").update({ pseudo }).eq("user_id", account.user.id);
+    if (error) return toast(T("syncError"), 2500);
+    account.profile.pseudo = pseudo;
+    toast(T("saved"));
+    renderFriends();
+  });
+
+  $("#btn-copy-code").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("#my-code").textContent); toast(T("codeCopied")); }
+    catch (e) { toast(T("copyFail")); }
+  });
+  $("#friends-goto-account").addEventListener("click", () => {
+    openModal("settings");
+    $("#account").scrollIntoView();
+  });
+
+  // ----- Connexion -----
   async function initAccount() {
-    if (!CFG.url || !CFG.anonKey) return; // pas configuré : jeu 100 % local
+    if (!CFG.url || !CFG.anonKey || account.sb) return; // pas configuré : jeu 100 % local
     try {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement("script");
-        s.src = SDK_URL;
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
-      });
-    } catch (e) { return; } // hors-ligne : on jouera sans synchro
+      await loadScript("assets/js/vendor/supabase.min.js");
+    } catch (e) {
+      return renderAccount(); // hors-ligne au démarrage : on réessaiera au retour du réseau
+    }
     account.sb = window.supabase.createClient(CFG.url, CFG.anonKey);
     account.sb.auth.onAuthStateChange((event, session) => {
       const user = session ? session.user : null;
       const changed = (user && user.id) !== (account.user && account.user.id);
       account.user = user;
-      if (!user) setAccountStatus("");
+      if (event === "PASSWORD_RECOVERY") {
+        account.recovery = true;
+        if (L) setTimeout(() => openModal("settings"), 0);
+      }
+      if (!user) Object.assign(account, { profile: null, dirty: false, syncedAt: null, state: "idle", sentSummary: "" });
       // (pas d'appel Supabase directement dans ce callback : on décale)
       if (changed && user) setTimeout(pull, 0);
       renderAccount();
     });
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") pull();
-      else if (account.pushTimer) push(); // on envoie avant que la page parte en arrière-plan
-    });
+    renderAccount();
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") pull();
+    else if (account.pushTimer) push(); // on envoie avant que la page parte en arrière-plan
+  });
+  window.addEventListener("online", () => {
+    initAccount();
+    if (account.user) { toast(T("backOnline"), 2000); pull(); }
+    renderAccount();
+  });
+  window.addEventListener("offline", () => {
+    if (account.user && L) toast(T("wentOffline"), 3000);
+    renderAccount();
+  });
+
+  function lockForm(form, locked) { $$(`#${form} button, #${form} input`).forEach((b) => (b.disabled = locked)); }
+
+  function showAuthError(error) {
+    const known = {
+      invalid_credentials: "badLogin", user_already_exists: "alreadyUser", weak_password: "weakPassword",
+      over_email_send_rate_limit: "tooManyEmails", email_provider_disabled: "emailDisabled", signup_disabled: "emailDisabled",
+    };
+    if (error.name === "AuthRetryableFetchError" || !online()) setMessage("offlineNoAccount");
+    else if (known[error.code]) setMessage(known[error.code]);
+    else { account.message = error.message; renderAccount(); }
   }
 
   $("#account-form").addEventListener("submit", async (e) => {
@@ -608,24 +820,41 @@
     if (!account.sb) return;
     const signUp = e.submitter && e.submitter.dataset.mode === "up";
     const creds = { email: $("#acc-email").value.trim(), password: $("#acc-password").value };
-    $$("#account-form button").forEach((b) => (b.disabled = true));
-    setAccountStatus("signingIn");
+    lockForm("account-form", true);
+    setMessage("signingIn");
     const { data, error } = signUp ? await account.sb.auth.signUp(creds) : await account.sb.auth.signInWithPassword(creds);
-    $$("#account-form button").forEach((b) => (b.disabled = false));
-    if (error) {
-      const known = { invalid_credentials: "badLogin", user_already_exists: "alreadyUser", weak_password: "weakPassword" };
-      if (error.name === "AuthRetryableFetchError") setAccountStatus("syncError"); // pas de réseau
-      else if (known[error.code]) setAccountStatus(known[error.code]);
-      else { account.status = error.message; renderAccount(); }
-      return;
-    }
-    if (signUp && !data.session) return setAccountStatus("confirmOn"); // « Confirm email » encore activé
+    lockForm("account-form", false);
+    if (error) return showAuthError(error);
+    if (signUp && !data.session) return setMessage("confirmOn"); // « Confirm email » encore activé
     $("#acc-password").value = "";
+    setMessage("");
+  });
+
+  $("#btn-forgot").addEventListener("click", async () => {
+    const email = $("#acc-email").value.trim();
+    if (!email) { setMessage("enterEmail"); return $("#acc-email").focus(); }
+    lockForm("account-form", true);
+    const { error } = await account.sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    lockForm("account-form", false);
+    if (error) return showAuthError(error);
+    setMessage("resetSent");
+  });
+
+  $("#account-newpass").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    lockForm("account-newpass", true);
+    const { error } = await account.sb.auth.updateUser({ password: $("#acc-newpass").value });
+    lockForm("account-newpass", false);
+    if (error) return showAuthError(error);
+    $("#acc-newpass").value = "";
+    account.recovery = false;
+    setMessage("passwordChanged");
   });
 
   $("#btn-signout").addEventListener("click", async () => {
     if (account.pushTimer) await push();
     await account.sb.auth.signOut(); // les données restent sur cet appareil
+    setMessage("");
   });
 
   // ---------- Archives ----------
@@ -688,7 +917,7 @@
     closeModals();
     loadGame();
     tick();
-    if (location.hash !== "#" + lang) history.replaceState(null, "", "#" + lang);
+    if (location.hash !== "#" + lang && !location.hash.includes("=")) history.replaceState(null, "", "#" + lang);
   }
 
   function showPicker() {

@@ -18,6 +18,9 @@ Au premier lancement, choisis ta langue. Tu peux la changer avec le bouton **FR 
 - La ligne en cours est sauvegardée si tu fermes la page
 - Flèches **← →** (ou clic sur une case) pour corriger une lettre au milieu du mot
 - **Compte en ligne** (optionnel) : stats, archives et réglages synchronisés sur tous tes appareils
+  - état de synchro clair (pastille orange sur ⚙️ hors-ligne, tout est renvoyé au retour du réseau)
+  - mot de passe oublié (lien par courriel)
+- **Classement entre amis** 👥 : score du jour, série 🔥 et record 🏆 de chacun ; on s'ajoute avec un code ami
 - Mode **difficile**, mode **daltonien**, **thème clair**
 - Claviers AZERTY, BÉPO, QWERTY, QWERTZ (FR) — QWERTY, AZERTY, DVORAK (EN)
 - Accents ignorés au clavier (é → E)
@@ -29,10 +32,14 @@ Au premier lancement, choisis ta langue. Tu peux la changer avec le bouton **FR 
 Optionnel : sans configuration, le jeu marche comme avant (tout reste sur l'appareil).
 
 1. Crée un projet gratuit sur [supabase.com](https://supabase.com).
-2. **SQL Editor → New query** : colle le contenu de [`supabase/schema.sql`](supabase/schema.sql) puis **Run**.
-3. **Authentication → Sign In / Providers → Email** : désactive **Confirm email** → **Save**
+2. **SQL Editor → New query** : colle le contenu de [`supabase/schema.sql`](supabase/schema.sql) puis **Run**
+   (sauvegardes, profils, amis, résultats ; tout est protégé par RLS).
+3. **Authentication → Sign In / Providers → Email** : le fournisseur **Email** doit être **activé**,
+   et **Confirm email** **désactivé** → **Save**
    (sinon chaque inscription envoie un courriel, et le plan gratuit en envoie très peu).
-4. **Project Settings → API** (ou bouton **Connect**) : copie la *Project URL* et la clé *anon* / *publishable*
+4. **Authentication → URL Configuration** : *Site URL* = l'adresse du jeu sur GitHub Pages
+   (ex. `https://mede2026.github.io/wordle-fr/`) — c'est là que mène le lien « mot de passe oublié ».
+5. **Project Settings → API** (ou bouton **Connect**) : copie la *Project URL* et la clé *anon* / *publishable*
    dans [`assets/js/config.js`](assets/js/config.js). Ces deux valeurs sont publiques, c'est normal
    (la table est protégée : chacun ne voit que sa propre sauvegarde).
 
@@ -64,7 +71,7 @@ assets/js/logic.js    règles pures (couleurs, mode difficile, mot du jour, stat
 assets/js/i18n.js     textes, claviers et réglages FR / EN
 assets/js/config.js   adresse et clé publique Supabase (compte en ligne, optionnel)
 assets/js/words-*.js  listes de mots, chargées seulement pour la langue choisie
-assets/js/vendor/     seedrandom (MIT) — même tirage que wordle.louan.me
+assets/js/vendor/     seedrandom (MIT) — même tirage que wordle.louan.me ; supabase-js 2.49.4 (MIT)
 tests/                tests automatiques (node --test)
 supabase/schema.sql   table de sauvegarde en ligne (à coller dans Supabase)
 assets/icons, img     icônes

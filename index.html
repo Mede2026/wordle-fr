@@ -42,6 +42,7 @@
         <div class="header-side">
           <button class="icon-btn" id="btn-archives" data-i18n-title="archives"><img class="icon" src="assets/icons/archive.svg" alt=""></button>
           <button class="icon-btn" id="btn-stats" data-i18n-title="stats"><img class="icon" src="assets/icons/stats.svg" alt=""></button>
+          <button class="icon-btn" id="btn-friends" data-i18n-title="friends" hidden><img class="icon" src="assets/icons/friends.svg" alt=""></button>
         </div>
 
         <div id="game-title" class="title tiles" aria-label="Titre"></div>
@@ -57,7 +58,7 @@
 
         <div class="header-side">
           <button class="icon-btn" id="btn-help" data-i18n-title="help"><img class="icon" src="assets/icons/help.svg" alt=""></button>
-          <button class="icon-btn" id="btn-settings" data-i18n-title="settings"><img class="icon" src="assets/icons/settings.svg" alt=""></button>
+          <button class="icon-btn" id="btn-settings" data-i18n-title="settings"><img class="icon" src="assets/icons/settings.svg" alt=""><span class="badge" id="sync-badge" hidden></span></button>
           <button class="icon-btn lang-switch" id="btn-lang" data-i18n-title="changeLang"></button>
         </div>
       </div>
@@ -105,6 +106,42 @@
     </div>
   </div>
 
+  <div class="modal" id="modal-friends" hidden>
+    <div class="modal-content">
+      <button class="close-btn" data-close><img class="icon" src="assets/icons/close.svg" alt="×"></button>
+      <h2><span data-i18n="friendsTitle"></span> <small class="lang-tag" id="friends-lang"></small></h2>
+      <div id="friends-signedout">
+        <p class="muted" data-i18n="friendsSignIn"></p>
+        <div class="ctas"><button class="btn" id="friends-goto-account" data-i18n="goToAccount"></button></div>
+      </div>
+      <div id="friends-body" hidden>
+        <div id="friends-list"></div>
+        <p class="setting-hint" id="friends-status" aria-live="polite"></p>
+        <div class="setting setting-col">
+          <span data-i18n="addFriend"></span>
+          <form id="friend-add" class="inline-form">
+            <input id="friend-code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" required data-i18n-placeholder="friendCode">
+            <button type="submit" data-i18n="add"></button>
+          </form>
+        </div>
+        <div class="setting setting-col">
+          <span data-i18n="yourCode"></span>
+          <div class="inline-form">
+            <strong class="friend-code" id="my-code"></strong>
+            <button type="button" id="btn-copy-code" data-i18n="copy"></button>
+          </div>
+        </div>
+        <div class="setting setting-col">
+          <span data-i18n="yourPseudo"></span>
+          <form id="pseudo-form" class="inline-form">
+            <input id="pseudo" maxlength="20" required autocomplete="nickname">
+            <button type="submit" data-i18n="save"></button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="modal-settings" hidden>
     <div class="modal-content">
       <button class="close-btn" data-close><img class="icon" src="assets/icons/close.svg" alt="×"></button>
@@ -147,6 +184,11 @@
             <button type="submit" class="selected" data-mode="in" data-i18n="signIn"></button>
             <button type="submit" data-mode="up" data-i18n="signUp"></button>
           </div>
+          <button type="button" class="link-btn" id="btn-forgot" data-i18n="forgot"></button>
+        </form>
+        <form id="account-newpass" class="account-form" hidden>
+          <input type="password" id="acc-newpass" autocomplete="new-password" minlength="6" required data-i18n-placeholder="newPassword">
+          <div class="layout-buttons"><button type="submit" class="selected" data-i18n="changePassword"></button></div>
         </form>
         <div id="account-info" class="account-form" hidden>
           <strong id="account-email"></strong>

@@ -177,3 +177,29 @@ test("mergeStores : réglages et langue de la sauvegarde la plus récente", () =
   assert.equal(m.settings.colorBlind, true);
   assert.deepEqual(G.mergeStores(null, b).settings, { theme: "light" });
 });
+
+// ---------- Classement entre amis ----------
+test("statsSummary : série, record et dernier jour joué", () => {
+  const games = { "2026-10-30": { won: true, n: 3 }, "2026-10-31": { won: true, n: 2 } };
+  assert.deepEqual(G.statsSummary(games, "2026-11-01"), { streak: 2, maxStreak: 2, played: 2, wins: 2, last: "2026-10-31" });
+  assert.equal(G.statsSummary({}, "2026-11-01").last, null);
+});
+
+test("rankFriends : gagnants (moins d'essais) > perdants > pas joué, puis série", () => {
+  const today = "2026-11-01";
+  const ranked = G.rankFriends([
+    { id: "a", pseudo: "Alice", today: null, stats: { streak: 9, maxStreak: 9, last: "2026-10-31" } },
+    { id: "b", pseudo: "Bob", today: { won: true, guesses: 4 }, stats: { streak: 1, last: today } },
+    { id: "c", pseudo: "Chloé", today: { won: false, guesses: 6 }, stats: { streak: 0, last: today } },
+    { id: "d", pseudo: "Dan", today: { won: true, guesses: 2 }, stats: { streak: 3, last: today } },
+    { id: "e", pseudo: "Éva", today: { won: true, guesses: 4 }, stats: { streak: 7, last: today } },
+  ], today);
+  assert.deepEqual(ranked.map((p) => p.id), ["d", "e", "b", "c", "a"]);
+  assert.equal(ranked[4].streak, 9); // joué hier : série encore vivante
+});
+
+test("rankFriends : une série plus vieille qu'hier est remise à 0", () => {
+  const [p] = G.rankFriends([{ id: "x", pseudo: "X", today: null, stats: { streak: 5, maxStreak: 8, last: "2026-10-20" } }], "2026-11-01");
+  assert.equal(p.streak, 0);
+  assert.equal(p.maxStreak, 8);
+});
