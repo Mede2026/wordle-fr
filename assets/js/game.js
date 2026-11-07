@@ -52,10 +52,10 @@
 
   // ---------- Sauvegarde (localStorage) ----------
   function withDefaults(s) {
-    s.settings = Object.assign({ colorBlind: false, webShare: false, hardMode: false, theme: null, layout: {} }, s.settings);
+    s.settings = Object.assign({ colorBlind: false, webShare: false, hardMode: false, theme: null, layout: {}, sound: false }, s.settings);
     s.settings.layout = Object.assign({}, s.settings.layout);
     for (const lang of Object.keys(window.LANGS)) {
-      s[lang] = Object.assign({ game: null, stats: {}, archives: {}, free: null }, s[lang]);
+      s[lang] = Object.assign({ game: null, stats: {}, archives: {}, free: null, challenge: null }, s[lang]);
     }
     return s;
   }
@@ -78,6 +78,7 @@
     date: null,
     archive: false,
     free: false,   // partie libre : mot au hasard, sans stats
+    challenge: null, // défi d'un ami : { answer, from } (sans stats)
     answer: "",
     guesses: [],   // mots déjà validés
     current: "",   // mot en train d'être tapé (" " = case vide)
@@ -96,11 +97,14 @@
     return G.wordFor(L, d.answers, dateKey, d.order);
   };
   const wordNumber = () => daysBetween(L.firstDay, state.date) + L.numberOffset;
+  const casual = () => state.free || !!state.challenge; // partie qui ne compte pas (libre ou défi)
 
   // ---------- Chargement / sauvegarde d'une partie ----------
   // Partie du jour : store[lang].game — Archives : store[lang].archives[date] — Partie libre : store[lang].free
+  // Défi : store[lang].challenge
   function savedSlot() {
     const s = store[state.lang];
+    if (state.challenge) return s.challenge;
     if (state.free) return s.free;
     if (state.archive) return s.archives[state.date];
     return s.game && s.game.date === state.date ? s.game : null;
@@ -115,7 +119,7 @@
   }
 
   function loadGame() {
-    state.answer = state.free ? freeAnswer() : wordFor(state.date);
+    state.answer = state.challenge ? state.challenge.answer : state.free ? freeAnswer() : wordFor(state.date);
     state.busy = false;
     const saved = savedSlot();
     // On ignore une sauvegarde faite pour un autre mot (ex. : ancienne version du jeu).
@@ -139,7 +143,9 @@
   function persistGame() {
     const s = store[state.lang];
     const slot = { answer: state.answer, guesses: state.guesses, current: state.current, hardMode: state.hardMode };
-    if (state.free) {
+    if (state.challenge) {
+      s.challenge = Object.assign({ from: state.challenge.from }, slot); // ne compte pas dans les stats
+    } else if (state.free) {
       s.free = slot; // ne compte pas dans les stats
     } else if (state.archive) {
       s.archives[state.date] = slot; // gardé, mais ne compte pas dans les stats
@@ -241,7 +247,7 @@
     $("#game-title").hidden = state.archive;
     $("#archives-selector").hidden = !state.archive;
     $("#btn-archives").classList.toggle("pressed", state.archive);
-    $("#btn-free").classList.toggle("pressed", state.free);
+    $("#btn-free").classList.toggle("pressed", casual());
     if (state.archive) {
       const first = L.firstDay;
       const last = addDays(today(), -1);
@@ -270,11 +276,45 @@
   }
 
   function shakeRow() {
+    sfx.invalid();
     const row = gridEl.children[state.guesses.length];
     row.classList.remove("shake");
     void row.offsetWidth; // relance l'animation
     row.classList.add("shake");
   }
+
+  // ---------- Sons et vibrations (réglage, désactivé par défaut) ----------
+  let audio = null;
+  function beep(freq, ms, delay = 0, type = "sine", vol = 0.08) {
+    if (!store.settings.sound) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === "suspended") audio.resume();
+      const t = audio.currentTime + delay / 1000;
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(vol, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(t);
+      osc.stop(t + ms / 1000 + 0.05);
+    } catch (e) { /* pas de son sur ce navigateur */ }
+  }
+  const buzz = (pattern) => {
+    // (le navigateur refuse de vibrer avant que la page ait été touchée)
+    const touched = !navigator.userActivation || navigator.userActivation.hasBeenActive;
+    if (store.settings.sound && navigator.vibrate && touched) navigator.vibrate(pattern);
+  };
+  const sfx = {
+    key: () => { beep(620, 35, 0, "triangle", 0.03); buzz(8); },
+    reveal: (res) => res.forEach((r, i) =>
+      beep({ correct: 880, partial: 660, incorrect: 330 }[r], 110, i * FLIP_MS + 250, "triangle", 0.06)),
+    invalid: () => { beep(160, 180, 0, "square", 0.03); buzz([50, 40, 50]); },
+    win: () => { [523, 659, 784, 1047].forEach((f, i) => beep(f, 220, i * 110)); buzz([80, 40, 80, 40, 160]); },
+    lose: () => { [392, 330, 262].forEach((f, i) => beep(f, 260, i * 160, "triangle")); buzz(300); },
+  };
 
   // ---------- Saisie ----------
   function onKey(key) {
@@ -292,9 +332,11 @@
       if (state.cursor > 0 && (state.cursor === NB_LETTERS || cells[state.cursor] === " ")) state.cursor--;
       if (cells[state.cursor] === " ") return renderGrid();
       cells[state.cursor] = " ";
+      sfx.key();
     } else if (/^[A-Z]$/.test(key) && state.cursor < NB_LETTERS) {
       cells[state.cursor] = key;
       popAt = state.cursor++;
+      sfx.key();
     } else {
       return;
     }
@@ -329,6 +371,7 @@
     }
 
     const row = state.guesses.length;
+    const badgesBefore = G.badges(store[state.lang].stats, today());
     state.guesses.push(guess);
     state.current = "";
     state.cursor = 0;
@@ -338,6 +381,7 @@
 
     state.busy = true;
     renderGrid(row);
+    sfx.reveal(evaluate(guess, state.answer));
     const revealTime = FLIP_MS * (NB_LETTERS - 1) + 500;
     setTimeout(() => {
       state.busy = false;
@@ -346,11 +390,16 @@
       renderHeader(); // ✓ dans les archives
       if (state.won) {
         toast(T("wins")[row], 2000);
+        sfx.win();
         tiles[row].forEach((t, i) => { t.style.animationDelay = `${i * 100}ms`; t.classList.remove("reveal"); t.classList.add("win"); });
       } else {
         toast(state.answer, 2500);
+        sfx.lose();
       }
-      setTimeout(() => openModal("stats"), 1800);
+      // Nouveau badge (mot du jour seulement) : on l'annonce après le message de fin.
+      const earned = G.badges(store[state.lang].stats, today()).filter((b) => !badgesBefore.includes(b));
+      if (earned.length) setTimeout(() => toast(T("newBadge", earned.map(badgeLabel).join(", ")), 3000), 2000);
+      setTimeout(() => openModal("stats"), earned.length ? 3200 : 1800);
     }, revealTime);
   }
 
@@ -379,9 +428,12 @@
     const graph = $("#graph");
     body.innerHTML = "";
     graph.innerHTML = "";
-    $("#dist-title").hidden = state.archive || state.free;
+    $("#dist-title").hidden = state.archive || casual();
+    $("#badges").hidden = state.archive || casual();
 
-    if (state.archive || state.free) {
+    if (state.challenge) {
+      body.appendChild(el("p", "muted", state.challenge.from ? T("challengeNoStatsFrom", state.challenge.from) : T("challengeNoStats")));
+    } else if (state.archive || state.free) {
       body.appendChild(el("p", "muted", T(state.free ? "freeNoStats" : "archiveNoStats")));
     } else {
       const s = G.computeStats(store[state.lang].stats, today());
@@ -407,16 +459,96 @@
         line.append(label, bar);
         graph.appendChild(line);
       });
+      renderBadges();
     }
 
     $("#solution").hidden = !state.finished;
-    $("#countdown-box").hidden = !state.finished || state.archive || state.free;
+    $("#countdown-box").hidden = !state.finished || state.archive || casual();
     $("#btn-new-word").hidden = !state.free || !state.finished;
     if (state.finished) {
       $("#solution-word").textContent = state.answer;
       $("#btn-definition").href = L.definitionUrl(state.answer);
       $("#share-label").textContent = T("share");
+      showDefinition();
     }
+  }
+
+  // ---------- Badges ----------
+  const badgeLabel = (id) => G.BADGES.find((b) => b.id === id).icon + " " + T("badgeNames")[id][0];
+
+  function renderBadges() {
+    const earned = G.badges(store[state.lang].stats, today());
+    const box = $("#badges-list");
+    box.innerHTML = "";
+    G.BADGES.forEach((b) => {
+      const [name, desc] = T("badgeNames")[b.id];
+      const item = el("div", "badge-item" + (earned.includes(b.id) ? " earned" : ""));
+      item.title = desc;
+      item.append(el("span", "badge-icon", b.icon), el("span", "badge-name", name), el("span", "badge-desc", desc));
+      box.appendChild(item);
+    });
+    $("#badges-count").textContent = `${earned.length}/${G.BADGES.length}`;
+  }
+
+  // ---------- Définition (Wiktionnaire), affichée sous le mot ----------
+  const definitions = {};
+  const plain = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  const POS_FR = /^(Nom commun|Nom propre|Verbe|Adjectif|Adverbe|Pronom|Préposition|Conjonction|Interjection|Article|Locution|Forme d)/;
+
+  /** Première définition française d'une page du Wiktionnaire (texte brut). */
+  function parseFrExtract(text) {
+    const fr = (text.split(/\n== (?!Français)/)[0] || "").split("\n");
+    for (let i = 0; i < fr.length; i++) {
+      const h = fr[i].match(/^={3,4} (.+?) ={3,4}$/);
+      if (!h || !POS_FR.test(h[1])) continue;
+      const lines = fr.slice(i + 1).map((l) => l.trim()).filter(Boolean);
+      // lines[0] = le mot et sa prononciation, lines[1] = la définition
+      if (lines[1] && !lines[1].startsWith("=")) return { pos: h[1].replace(/ \d+$/, ""), text: lines[1] };
+    }
+    return null;
+  }
+
+  async function fetchDefinition(lang, word) {
+    const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : null));
+    if (lang === "en") {
+      const j = await json(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word.toLowerCase())}`);
+      for (const entry of (j && j.en) || []) {
+        for (const d of entry.definitions || []) {
+          const text = new DOMParser().parseFromString(d.definition || "", "text/html").body.textContent.trim();
+          if (text) return { pos: entry.partOfSpeech, text };
+        }
+      }
+      return null;
+    }
+    // Français : les mots du jeu n'ont pas d'accents (ECOLE) → on cherche la page « école ».
+    const api = "https://fr.wiktionary.org/w/api.php?format=json&formatversion=2&origin=*&action=query";
+    const found = await json(`${api}&list=search&srlimit=10&srsearch=${encodeURIComponent("intitle:" + word.toLowerCase())}`);
+    const titles = [word.toLowerCase()].concat(((found && found.query.search) || []).map((r) => r.title))
+      .filter((t, i, all) => plain(t) === word && all.indexOf(t) === i)
+      .sort((a, b) => (a[0] !== a[0].toLowerCase()) - (b[0] !== b[0].toLowerCase())); // « école » avant « École »
+    for (const title of titles.slice(0, 3)) {
+      const j = await json(`${api}&prop=extracts&explaintext=1&exchars=2000&titles=${encodeURIComponent(title)}`);
+      const page = j && j.query.pages[0];
+      const def = page && page.extract && parseFrExtract(page.extract);
+      if (def) return def;
+    }
+    return null;
+  }
+
+  function showDefinition() {
+    const box = $("#definition-text");
+    const { lang, answer } = state;
+    box.hidden = true;
+    if (!online()) return;
+    const key = lang + answer;
+    definitions[key] = definitions[key] || fetchDefinition(lang, answer).catch(() => null);
+    definitions[key].then((d) => {
+      if (!d || state.answer !== answer || state.lang !== lang) return;
+      box.innerHTML = "";
+      const text = d.text.length > 220 ? d.text.slice(0, 217) + "…" : d.text;
+      box.append(el("em", "", d.pos), document.createTextNode(" — " + text));
+      box.hidden = false;
+    });
   }
 
   function tick() {
@@ -424,7 +556,7 @@
     const s = G.secondsToMidnight(L.timeZone);
     $("#countdown").textContent = `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
     // Nouveau jour pendant que la page est ouverte → on charge le nouveau mot.
-    if (!state.archive && !state.free && state.date !== today() && !state.busy) { state.date = today(); loadGame(); }
+    if (!state.archive && !casual() && state.date !== today() && !state.busy) { state.date = today(); loadGame(); }
   }
   setInterval(tick, 1000);
 
@@ -434,9 +566,13 @@
     const light = document.body.classList.contains("light");
     const emoji = { correct: cb ? "🟧" : "🟩", partial: cb ? "🟦" : "🟨", incorrect: light ? "⬜" : "⬛" };
     const score = state.won ? state.guesses.length : "X";
-    const tag = state.free ? " ∞" : state.archive ? ` (${state.date})` : "";
     const lines = state.guesses.map((g) => evaluate(g, state.answer).map((r) => emoji[r]).join(""));
-    return `${L.shareName} #${wordNumber()}${tag} ${score}/${NB_ATTEMPTS}${state.hardMode ? "*" : ""}\n\n${lines.join("\n")}`;
+    return `${shareTitle()} ${score}/${NB_ATTEMPTS}${state.hardMode ? "*" : ""}\n\n${lines.join("\n")}`;
+  }
+  function shareTitle() {
+    if (state.challenge) return `${L.shareName} 🎯 ${state.challenge.from ? T("challengeOf", state.challenge.from) : T("challenge")}`;
+    const tag = state.free ? " ∞" : state.archive ? ` (${state.date})` : "";
+    return `${L.shareName} #${wordNumber()}${tag}`;
   }
 
   async function share() {
@@ -463,6 +599,61 @@
     }
   }
   $("#btn-share").addEventListener("click", share);
+
+  /** Image du résultat : la grille de couleurs (sans les lettres, pour ne rien dévoiler). */
+  function resultImage() {
+    const css = getComputedStyle(document.body);
+    const color = (v) => css.getPropertyValue(v).trim();
+    const fill = { correct: color("--correct"), partial: color("--partial"), incorrect: color("--dark") };
+    const S = 64, G2 = 10, W = 5 * S + 4 * G2 + 80;
+    const H = 130 + NB_ATTEMPTS * (S + G2) + 50;
+    const c = document.createElement("canvas");
+    c.width = W * 2; c.height = H * 2; // net sur les écrans haute densité
+    const g = c.getContext("2d");
+    g.scale(2, 2);
+    g.fillStyle = color("--panel");
+    g.fillRect(0, 0, W, H);
+    g.textAlign = "center";
+    g.fillStyle = color("--white");
+    g.font = "700 26px Outfit, Avenir, Helvetica, Arial, sans-serif";
+    g.fillText(shareTitle(), W / 2, 52, W - 30);
+    g.font = "700 20px Outfit, Avenir, Helvetica, Arial, sans-serif";
+    g.fillStyle = state.won ? fill.correct : color("--hint");
+    g.fillText(`${state.won ? state.guesses.length : "X"}/${NB_ATTEMPTS}${state.hardMode ? " *" : ""}`, W / 2, 88);
+    for (let r = 0; r < NB_ATTEMPTS; r++) {
+      const res = state.guesses[r] ? evaluate(state.guesses[r], state.answer) : null;
+      for (let i = 0; i < NB_LETTERS; i++) {
+        const x = 40 + i * (S + G2), y = 115 + r * (S + G2);
+        g.beginPath();
+        if (g.roundRect) g.roundRect(x, y, S, S, 8); else g.rect(x, y, S, S);
+        if (res) { g.fillStyle = fill[res[i]]; g.fill(); }
+        else { g.strokeStyle = color("--border"); g.lineWidth = 2; g.stroke(); }
+      }
+    }
+    g.font = "14px Outfit, Avenir, Helvetica, Arial, sans-serif";
+    g.fillStyle = color("--hint");
+    g.fillText((location.host + location.pathname).replace(/\/$/, ""), W / 2, H - 22);
+    return new Promise((resolve) => c.toBlob(resolve, "image/png"));
+  }
+
+  $("#btn-share-image").addEventListener("click", async () => {
+    const blob = await resultImage();
+    if (!blob) return toast(T("copyFail"));
+    const file = new File([blob], "le-mot.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); return; }
+      catch (e) { if (e.name === "AbortError") return; }
+    }
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      return toast(T("imageCopied"), 2000);
+    } catch (e) { /* pas de copie d'image → téléchargement */ }
+    const a = el("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "le-mot.png";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
 
   // ---------- Fenêtres (modales) ----------
   function openModal(name) {
@@ -491,6 +682,7 @@
       colorBlind: store.settings.colorBlind,
       webShare: store.settings.webShare,
       lightTheme: isLight(),
+      sound: store.settings.sound,
     };
     $$(".toggle[data-setting]").forEach((t) => {
       const on = !!values[t.dataset.setting];
@@ -528,6 +720,7 @@
     } else {
       store.settings[key] = !store.settings[key];
       save();
+      if (key === "sound") sfx.win(); // petit aperçu
     }
     applyLook();
     renderSettings();
@@ -738,6 +931,12 @@
       const row = el("div", "friend-row" + (p.me ? " me" : ""));
       const name = el("span", "friend-name", p.pseudo);
       if (p.me) name.appendChild(el("small", "", " (" + T("you") + ")"));
+      const nBadges = p.me ? G.badges(myStats, day).length : (p.stats && p.stats.badges) || 0;
+      if (nBadges) {
+        const b = el("small", "friend-badges", " 🏅" + nBadges);
+        b.title = T("badgesTitle", nBadges);
+        name.appendChild(b);
+      }
       let cells;
       if (week) {
         const pts = el("span", "friend-score " + (p.points ? "won" : "none"), T("pts", p.points));
@@ -780,11 +979,14 @@
 
   // ----- Invitation : lien ?ami=CODE qui ajoute l'ami automatiquement -----
   const PENDING_KEY = "lemot:ami";
-  const inviteParam = new URLSearchParams(location.search).get("ami");
+  const params = new URLSearchParams(location.search);
+  const inviteParam = params.get("ami");
   if (inviteParam) {
     try { localStorage.setItem(PENDING_KEY, inviteParam.toUpperCase().slice(0, 8)); } catch (e) { /* mode privé */ }
-    history.replaceState(null, "", location.pathname + location.hash); // on enlève ?ami= de l'adresse
   }
+  // Lien de défi : ?defi=<mot caché>&de=<pseudo>
+  const challengeParam = params.has("defi") ? { word: G.decodeChallenge(params.get("defi")), from: (params.get("de") || "").slice(0, 20) } : null;
+  if (inviteParam || challengeParam) history.replaceState(null, "", location.pathname + location.hash); // adresse propre
   const pendingInvite = () => { try { return localStorage.getItem(PENDING_KEY); } catch (e) { return null; } };
 
   async function acceptInvite() {
@@ -847,11 +1049,13 @@
     $("#account").scrollIntoView();
   });
 
-  // ----- Rappel quotidien (notifications push) -----
-  // Réglé par appareil (chaque téléphone / ordi a son propre abonnement) : { on, hour }.
+  // ----- Notifications push : rappel quotidien + « un ami a fait mieux que toi » -----
+  // Réglé par appareil (chaque téléphone / ordi a son propre abonnement) : { on, hour, friends }.
+  // Un seul abonnement par appareil, gardé tant qu'une des deux options est active.
   const REMINDER_KEY = "lemot:rappel";
   const reminder = (() => { try { return JSON.parse(localStorage.getItem(REMINDER_KEY)) || {}; } catch (e) { return {}; } })();
   if (reminder.hour == null) reminder.hour = 9;
+  const wantsPush = () => !!(reminder.on || reminder.friends);
   const saveReminder = () => { try { localStorage.setItem(REMINDER_KEY, JSON.stringify(reminder)); } catch (e) { /* mode privé */ } };
   const pushSupported = () => !!CFG.vapidPublicKey && location.protocol.startsWith("http")
     && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -865,16 +1069,18 @@
     const sel = $("#reminder-hour");
     if (!sel.options.length) for (let h = 0; h < 24; h++) sel.add(new Option(`${pad(h)}:00`, h));
     sel.value = reminder.hour;
-    const tg = $("#reminder-toggle");
-    tg.classList.toggle("on", !!reminder.on);
-    tg.setAttribute("aria-checked", !!reminder.on);
-    tg.disabled = !pushSupported();
+    [["#reminder-toggle", reminder.on], ["#friendsnotif-toggle", reminder.friends]].forEach(([id, on]) => {
+      const tg = $(id);
+      tg.classList.toggle("on", !!on);
+      tg.setAttribute("aria-checked", !!on);
+      tg.disabled = !pushSupported();
+    });
     $("#reminder-hour-row").hidden = !reminder.on;
-    $("#btn-reminder-test").hidden = !reminder.on;
+    $("#btn-reminder-test").hidden = !wantsPush();
     let hint = "";
     if (!pushSupported()) hint = T(isIOS ? "reminderIOS" : "reminderUnsupported");
     else if (Notification.permission === "denied") hint = T("reminderDenied");
-    else if (reminder.on) hint = T("reminderOnHint");
+    else if (wantsPush()) hint = T("reminderOnHint");
     $("#reminder-hint").textContent = hint;
   }
 
@@ -883,48 +1089,52 @@
     return account.sb.from("push_subscriptions").upsert({
       endpoint: j.endpoint, user_id: account.user.id, p256dh: j.keys.p256dh, auth: j.keys.auth,
       lang: state.lang, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", hour: reminder.hour,
+      remind: !!reminder.on, friends: !!reminder.friends,
     });
   }
 
-  async function enableReminder() {
-    if ((await Notification.requestPermission()) !== "granted") return toast(T("reminderDenied"), 3000);
+  /** Active ou coupe une option (« on » = rappel, « friends » = ami qui fait mieux). */
+  async function setPushOption(key, on) {
     const reg = await navigator.serviceWorker.ready;
-    const sub = (await reg.pushManager.getSubscription())
-      || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(CFG.vapidPublicKey) }));
-    const { error } = await saveSubscription(sub);
-    if (error) return toast(T("syncError"), 2500);
-    reminder.on = true;
-    saveReminder();
-    toast(T("reminderOn", `${pad(reminder.hour)}:00`), 2500);
-  }
-
-  async function disableReminder() {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    if (sub) {
+    let sub = await reg.pushManager.getSubscription();
+    if (on) {
+      if ((await Notification.requestPermission()) !== "granted") return toast(T("reminderDenied"), 3000);
+      sub = sub || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(CFG.vapidPublicKey) }));
+    }
+    const before = reminder[key];
+    reminder[key] = on;
+    if (wantsPush()) {
+      const { error } = await saveSubscription(sub);
+      if (error) { reminder[key] = before; return toast(T("syncError"), 2500); }
+    } else if (sub) {
       await account.sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
       await sub.unsubscribe();
     }
-    reminder.on = false;
     saveReminder();
+    if (on) toast(key === "on" ? T("reminderOn", `${pad(reminder.hour)}:00`) : T("friendsNotifOn"), 2500);
+  }
+
+  /** Déconnexion : plus aucune notification pour ce compte sur cet appareil. */
+  async function disableReminder() {
+    reminder.friends = false;
+    await setPushOption("on", false);
   }
 
   /** Heure ou langue changée : on met l'abonnement à jour. */
   async function updateReminder() {
-    if (!reminder.on || !account.user || !pushSupported() || !online()) return;
+    if (!wantsPush() || !account.user || !pushSupported() || !online()) return;
     const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
     if (sub) await saveSubscription(sub);
-    else { reminder.on = false; saveReminder(); renderAccount(); }
+    else { reminder.on = reminder.friends = false; saveReminder(); renderAccount(); }
   }
 
-  $("#reminder-toggle").addEventListener("click", async () => {
+  [["#reminder-toggle", "on"], ["#friendsnotif-toggle", "friends"]].forEach(([id, key]) => $(id).addEventListener("click", async () => {
     if (!account.user || !pushSupported()) return;
-    const tg = $("#reminder-toggle");
-    tg.disabled = true;
-    try { await (reminder.on ? disableReminder() : enableReminder()); }
+    $(id).disabled = true;
+    try { await setPushOption(key, !reminder[key]); }
     catch (e) { toast(T("reminderUnsupported"), 3000); }
     renderReminder();
-  });
+  }));
   $("#reminder-hour").addEventListener("change", (e) => {
     reminder.hour = +e.target.value;
     saveReminder();
@@ -1026,7 +1236,7 @@
 
   $("#btn-signout").addEventListener("click", async () => {
     if (account.pushTimer) await push();
-    if (reminder.on) await disableReminder().catch(() => {}); // plus de rappels pour ce compte ici
+    if (wantsPush()) await disableReminder().catch(() => {}); // plus de notifications pour ce compte ici
     await account.sb.auth.signOut(); // les données restent sur cet appareil
     setMessage("");
   });
@@ -1036,6 +1246,7 @@
     if (state.busy) return;
     state.archive = !state.archive;
     state.free = false;
+    state.challenge = null;
     state.date = state.archive ? addDays(today(), -1) : today();
     loadGame();
   });
@@ -1043,7 +1254,8 @@
   // ---------- Partie libre ----------
   $("#btn-free").addEventListener("click", () => {
     if (state.busy) return;
-    state.free = !state.free;
+    state.free = !state.free && !state.challenge; // depuis un défi : retour au mot du jour
+    state.challenge = null;
     state.archive = false;
     state.date = today();
     loadGame();
@@ -1063,6 +1275,48 @@
   $("#archive-prev").addEventListener("click", () => goArchive(addDays(state.date, -1)));
   $("#archive-next").addEventListener("click", () => goArchive(addDays(state.date, 1)));
   $("#archive-date-input").addEventListener("change", (e) => goArchive(e.target.value));
+
+  // ---------- Défi : on choisit un mot, l'ami le devine avec un lien ----------
+  function startChallenge(word, from) {
+    const lang = state.lang;
+    if (!word || !getDict(lang).valid.has(word)) return toast(T("challengeBad"), 3000);
+    const s = store[lang];
+    if (!s.challenge || s.challenge.answer !== word) s.challenge = null; // nouveau défi : on repart de zéro
+    state.archive = state.free = false;
+    state.challenge = { answer: word, from };
+    state.date = today();
+    closeModals();
+    loadGame();
+    toast(from ? T("challengeFromToast", from) : T("challengeToast"), 3000);
+  }
+
+  function openChallengeForm() {
+    openModal("challenge");
+    $("#challenge-lang").textContent = state.lang.toUpperCase();
+    $("#challenge-from").value = (account.profile && account.profile.pseudo) || $("#challenge-from").value;
+    $("#challenge-error").textContent = "";
+    $("#challenge-word").value = "";
+    $("#challenge-word").focus();
+  }
+  $("#btn-challenge").addEventListener("click", openChallengeForm);
+
+  $("#challenge-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const word = plain($("#challenge-word").value.trim());
+    const err = $("#challenge-error");
+    if (!/^[A-Z]{5}$/.test(word)) { err.textContent = T("notEnough"); return; }
+    if (!getDict(state.lang).valid.has(word)) { err.textContent = T("notInList"); return; }
+    err.textContent = "";
+    const from = $("#challenge-from").value.trim().slice(0, 20);
+    const url = `${location.origin}${location.pathname}?defi=${G.encodeChallenge(word)}`
+      + (from ? `&de=${encodeURIComponent(from)}` : "") + `#${state.lang}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: L.shareName, text: T("challengeText"), url }); return closeModals(); }
+      catch (e2) { if (e2.name === "AbortError") return; }
+    }
+    try { await navigator.clipboard.writeText(url); toast(T("linkCopied")); closeModals(); }
+    catch (e2) { err.textContent = url; } // on montre le lien pour le copier à la main
+  });
 
   // ---------- Langue ----------
   function applyTexts() {
@@ -1100,6 +1354,7 @@
     L = window.LANGS[lang];
     save();
     state.archive = state.free = false;
+    state.challenge = null;
     state.date = today();
     applyTexts();
     buildKeyboard();
@@ -1129,9 +1384,11 @@
   buildGrid();
   applyLook();
   const fromHash = location.hash.slice(1);
-  if (window.LANGS[fromHash]) setLang(fromHash);
-  else if (store.lang && window.LANGS[store.lang]) setLang(store.lang);
+  let started = null;
+  if (window.LANGS[fromHash]) started = setLang(fromHash);
+  else if (store.lang && window.LANGS[store.lang]) started = setLang(store.lang);
   else showPicker();
+  if (started && challengeParam) started.then(() => startChallenge(challengeParam.word, challengeParam.from));
   initAccount();
 
   // Mode hors-ligne (seulement si le site est servi en http/https)

@@ -182,11 +182,46 @@
     return out;
   }
 
-  /** Résumé partagé avec les amis : { streak, maxStreak, played, wins, last }. */
+  // ---------- Badges ----------
+  // Calculés à partir des stats du mot du jour (pas les archives ni la partie libre).
+  const BADGES = [
+    { id: "first", icon: "🎉", test: (s) => s.wins >= 1 },
+    { id: "streak7", icon: "🔥", test: (s) => s.maxStreak >= 7 },
+    { id: "streak30", icon: "🌟", test: (s) => s.maxStreak >= 30 },
+    { id: "streak100", icon: "👑", test: (s) => s.maxStreak >= 100 },
+    { id: "wins10", icon: "🥉", test: (s) => s.wins >= 10 },
+    { id: "wins50", icon: "🥈", test: (s) => s.wins >= 50 },
+    { id: "wins100", icon: "🥇", test: (s) => s.wins >= 100 },
+    { id: "in2", icon: "🎯", test: (s) => s.dist[0] + s.dist[1] >= 1 },
+    { id: "in1", icon: "🍀", test: (s) => s.dist[0] >= 1 },
+    { id: "close", icon: "😅", test: (s) => s.dist[NB_ATTEMPTS - 1] >= 1 },
+    { id: "hard10", icon: "💪", test: (s, games) => Object.values(games).filter((g) => g.won && g.hard).length >= 10 },
+  ];
+
+  /** Identifiants des badges gagnés, dans l'ordre de BADGES. */
+  function badges(games, today) {
+    const s = computeStats(games, today);
+    return BADGES.filter((b) => b.test(s, games)).map((b) => b.id);
+  }
+
+  /** Résumé partagé avec les amis : { streak, maxStreak, played, wins, last, badges }. */
   function statsSummary(games, today) {
     const s = computeStats(games, today);
     const days = Object.keys(games).sort();
-    return { streak: s.streak, maxStreak: s.maxStreak, played: s.played, wins: s.wins, last: days[days.length - 1] || null };
+    return {
+      streak: s.streak, maxStreak: s.maxStreak, played: s.played, wins: s.wins,
+      last: days[days.length - 1] || null, badges: badges(games, today).length,
+    };
+  }
+
+  // ---------- Défi : un mot choisi, caché dans un lien ----------
+  // Pas un vrai chiffrement : juste pour que le mot ne se lise pas dans l'adresse.
+  const shift = (word, dir) => [...word].map((c, i) =>
+    String.fromCharCode(65 + ((((c.charCodeAt(0) - 65 + dir * (7 * i + 11)) % 26) + 26) % 26))).join("");
+  const encodeChallenge = (word) => shift(word.toUpperCase(), 1).toLowerCase();
+  function decodeChallenge(code) {
+    if (!/^[a-z]{5}$/i.test(code || "")) return null;
+    return shift(code.toUpperCase(), -1);
   }
 
   /**
@@ -233,6 +268,7 @@
     NB_LETTERS, NB_ATTEMPTS,
     pad, daysBetween, addDays, todayKey, secondsToMidnight,
     shuffled, chunk5, wordFor, evaluate, hardModeError, computeStats, mergeStores,
-    statsSummary, rankFriends, points, rankWeek,
+    BADGES, badges, statsSummary, rankFriends, points, rankWeek,
+    encodeChallenge, decodeChallenge,
   };
 });

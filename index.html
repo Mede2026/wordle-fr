@@ -91,6 +91,7 @@
       <div id="solution" hidden>
         <div class="subtitle" data-i18n="wordWas"></div>
         <h2 id="solution-word"></h2>
+        <p class="definition-text" id="definition-text" hidden></p>
         <div class="ctas">
           <a class="btn" id="btn-definition" target="_blank" rel="noopener">
             <img class="icon" src="assets/icons/definition.svg" alt=""><span data-i18n="definition"></span>
@@ -99,11 +100,16 @@
           <button class="btn" id="btn-share">
             <img class="icon" src="assets/icons/copy.svg" alt=""><span id="share-label"></span>
           </button>
+          <button class="btn" id="btn-share-image"><span data-i18n="shareImage"></span></button>
         </div>
       </div>
       <div class="modal-footer" id="countdown-box" hidden>
         <div class="subtitle" data-i18n="nextWord"></div>
         <div class="time" id="countdown"></div>
+      </div>
+      <div id="badges" hidden>
+        <h2><span data-i18n="badges"></span> <small class="lang-tag" id="badges-count"></small></h2>
+        <div id="badges-list"></div>
       </div>
     </div>
   </div>
@@ -112,6 +118,7 @@
     <div class="modal-content">
       <button class="close-btn" data-close><img class="icon" src="assets/icons/close.svg" alt="×"></button>
       <h2><span data-i18n="friendsTitle"></span> <small class="lang-tag" id="friends-lang"></small></h2>
+      <button type="button" class="btn invite-btn challenge-btn" id="btn-challenge" data-i18n="challengeCreate"></button>
       <div id="friends-signedout">
         <p class="invite-note" id="friends-invited" data-i18n="invitedSignIn" hidden></p>
         <p class="muted" data-i18n="friendsSignIn"></p>
@@ -150,6 +157,20 @@
     </div>
   </div>
 
+  <div class="modal" id="modal-challenge" hidden>
+    <div class="modal-content">
+      <button class="close-btn" data-close><img class="icon" src="assets/icons/close.svg" alt="×"></button>
+      <h2><span data-i18n="challengeTitle"></span> <small class="lang-tag" id="challenge-lang"></small></h2>
+      <p class="setting-hint" data-i18n="challengeHint"></p>
+      <form id="challenge-form" class="account-form">
+        <input id="challenge-word" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" required data-i18n-placeholder="challengeWord">
+        <input id="challenge-from" maxlength="20" autocomplete="nickname" data-i18n-placeholder="challengeFrom">
+        <div class="layout-buttons"><button type="submit" class="selected" data-i18n="challengeSend"></button></div>
+        <p class="setting-hint warn" id="challenge-error" aria-live="polite"></p>
+      </form>
+    </div>
+  </div>
+
   <div class="modal" id="modal-settings" hidden>
     <div class="modal-content">
       <button class="close-btn" data-close><img class="icon" src="assets/icons/close.svg" alt="×"></button>
@@ -166,6 +187,10 @@
       <div class="setting">
         <span data-i18n="colorBlind"></span>
         <button class="toggle" data-setting="colorBlind" role="switch"><span></span></button>
+      </div>
+      <div class="setting">
+        <span data-i18n="sound"></span>
+        <button class="toggle" data-setting="sound" role="switch"><span></span></button>
       </div>
       <div class="setting">
         <span data-i18n="nativeShare"></span>
@@ -209,6 +234,10 @@
               <span data-i18n="reminderHour"></span>
               <select id="reminder-hour"></select>
             </label>
+            <div class="reminder-row">
+              <span data-i18n="friendsNotif"></span>
+              <button class="toggle" id="friendsnotif-toggle" role="switch"><span></span></button>
+            </div>
             <button type="button" class="link-btn" id="btn-reminder-test" data-i18n="reminderTest" hidden></button>
             <p class="setting-hint" id="reminder-hint"></p>
           </div>

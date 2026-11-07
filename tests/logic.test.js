@@ -181,7 +181,7 @@ test("mergeStores : réglages et langue de la sauvegarde la plus récente", () =
 // ---------- Classement entre amis ----------
 test("statsSummary : série, record et dernier jour joué", () => {
   const games = { "2026-10-30": { won: true, n: 3 }, "2026-10-31": { won: true, n: 2 } };
-  assert.deepEqual(G.statsSummary(games, "2026-11-01"), { streak: 2, maxStreak: 2, played: 2, wins: 2, last: "2026-10-31" });
+  assert.deepEqual(G.statsSummary(games, "2026-11-01"), { streak: 2, maxStreak: 2, played: 2, wins: 2, last: "2026-10-31", badges: 2 });
   assert.equal(G.statsSummary({}, "2026-11-01").last, null);
 });
 
@@ -213,4 +213,31 @@ test("rankWeek : points sur 7 jours (6 pts en 1 essai … 0 si perdu)", () => {
   ], today);
   assert.deepEqual(ranked.map((p) => [p.id, p.points, p.played]), [["b", 5, 2], ["a", 5, 2], ["c", 0, 0]]);
   // à égalité de points : le plus de victoires d'abord (Bob 2, Alice 1) ; le 31/10 est hors semaine
+});
+
+test("badges : première victoire, série de 7, en 2 essais, sur le fil", () => {
+  const games = {};
+  for (let i = 0; i < 7; i++) games[G.addDays("2026-11-01", i)] = { won: true, n: i === 0 ? 2 : i === 1 ? 6 : 4 };
+  assert.deepEqual(G.badges(games, "2026-11-07"), ["first", "streak7", "in2", "close"]);
+  assert.deepEqual(G.badges({}, "2026-11-07"), []);
+  assert.deepEqual(G.badges({ "2026-11-01": { won: false, n: 6 } }, "2026-11-07"), []);
+});
+
+test("badges : 10 victoires en mode difficile", () => {
+  const games = {};
+  for (let i = 0; i < 10; i++) games[G.addDays("2026-01-01", i * 2)] = { won: true, n: 4, hard: true };
+  assert.ok(G.badges(games, "2026-11-07").includes("hard10"));
+  assert.ok(G.badges(games, "2026-11-07").includes("wins10"));
+});
+
+test("défi : le mot est caché dans le lien et se retrouve", () => {
+  for (const w of ["CRANE", "ZEBRE", "AAAAA", "ZZZZZ"]) {
+    const code = G.encodeChallenge(w);
+    assert.match(code, /^[a-z]{5}$/);
+    assert.notEqual(code.toUpperCase(), w);
+    assert.equal(G.decodeChallenge(code), w);
+  }
+  assert.equal(G.decodeChallenge("abc"), null);
+  assert.equal(G.decodeChallenge("ab1de"), null);
+  assert.equal(G.decodeChallenge(null), null);
 });

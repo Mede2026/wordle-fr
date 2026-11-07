@@ -323,7 +323,8 @@ main {
 #solution { margin-top: 20px; text-align: center; }
 #solution h2 { margin: 4px 0 12px; letter-spacing: 3px; }
 .subtitle { font-size: 12px; font-weight: 700; color: var(--hint); }
-.ctas { display: flex; justify-content: center; gap: 8px; }
+.ctas { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+#btn-share-image { min-width: 0; background: var(--btn-bg); border-color: rgba(0, 0, 0, 0.25); color: var(--white); }
 .btn {
   display: flex;
   align-items: center;
@@ -381,7 +382,7 @@ main {
 .account-form strong { font-size: 14px; word-break: break-all; }
 .layout-buttons button:disabled { opacity: 0.5; }
 .link-btn { align-self: flex-start; padding: 2px 0; color: var(--hint); font-size: 13px; text-decoration: underline; background: none; }
-#account-status.warn { color: var(--partial); }
+#account-status.warn, #challenge-error { color: var(--partial); }
 
 /* Pastille de synchro (hors-ligne / erreur) */
 #btn-settings { position: relative; }
@@ -442,6 +443,27 @@ main {
 }
 .toggle:disabled { opacity: 0.4; }
 .invite-btn { margin-top: 10px; width: 100%; }
+.challenge-btn { margin: 0 0 14px; background: var(--partial); border-color: var(--partial-dark); }
+#challenge-word { text-transform: uppercase; letter-spacing: 4px; font-weight: 700; }
+#challenge-error { overflow-wrap: anywhere; }
+
+/* Définition sous le mot */
+.definition-text { margin: -4px auto 14px; max-width: 360px; font-size: 14px; color: var(--white); line-height: 1.4; }
+.definition-text em { color: var(--hint); }
+
+/* Badges */
+#badges h2 { margin-top: 24px; }
+#badges-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.badge-item {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 4px; border-radius: 6px; background: var(--stat-bg); text-align: center;
+  opacity: 0.35; filter: grayscale(1);
+}
+.badge-item.earned { opacity: 1; filter: none; }
+.badge-icon { font-size: 24px; }
+.badge-name { font-size: 12px; font-weight: 700; color: var(--white); }
+.badge-desc { font-size: 10px; color: var(--hint); }
+.friend-badges { color: var(--hint); }
 .invite-note { margin-bottom: 10px; padding: 10px; border-radius: 6px; background: var(--stat-bg); color: var(--white); }
 .friend-code { flex: 1; font-size: 20px; letter-spacing: 3px; color: var(--white); font-variant-numeric: tabular-nums; }
 @media (max-width: 380px) {

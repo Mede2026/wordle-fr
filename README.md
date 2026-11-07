@@ -25,10 +25,15 @@ Au premier lancement, choisis ta langue. Tu peux la changer avec le bouton **FR 
   (6 pts en 1 essai … 1 pt en 6, 0 si perdu) ; on s'ajoute avec un code ami ou un **lien d'invitation**
 - **Rappel quotidien** 🔔 (notification) à l'heure choisie, seulement si tu n'as pas encore joué
   (sur iPhone : ajouter d'abord le jeu à l'écran d'accueil)
+- Notification quand **un ami fait mieux que toi** au mot du jour 🏆 (option)
 - Mode **difficile**, mode **daltonien**, **thème clair**
 - Claviers AZERTY, BÉPO, QWERTY, QWERTZ (FR) — QWERTY, AZERTY, DVORAK (EN)
 - Accents ignorés au clavier (é → E)
-- Partage du résultat en emojis 🟩🟨⬛
+- Partage du résultat en emojis 🟩🟨⬛ ou en **image** (la grille, sans les lettres)
+- **Définition** du mot affichée à la fin de la partie (Wiktionnaire)
+- **Badges** 🏅 : séries de 7, 30 et 100 jours, victoires, mot trouvé en 1 ou 2 essais, mode difficile…
+- **Défi** 🎯 : choisis un mot, ton ami reçoit un lien pour le deviner (le mot n'est pas lisible dans le lien)
+- **Sons et vibrations** (désactivés par défaut)
 - Hors-ligne (PWA) quand le site est hébergé (ex. GitHub Pages)
 
 ## Compte et synchronisation (Supabase)

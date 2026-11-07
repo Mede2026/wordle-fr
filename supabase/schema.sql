@@ -180,3 +180,55 @@ create extension if not exists pg_cron;
 --     body := '{}'::jsonb,
 --     timeout_milliseconds := 30000)
 -- $$);
+
+-- ---------- « Un ami a fait mieux que toi » (notification push) ----------
+
+-- Chaque appareil choisit ses notifications : rappel quotidien et/ou ami qui fait mieux.
+alter table public.push_subscriptions
+  add column if not exists remind  boolean not null default true,
+  add column if not exists friends boolean not null default false;
+
+-- Une seule notification par ami et par jour.
+create table if not exists public.friend_beats (
+  from_id uuid not null references auth.users (id) on delete cascade,
+  to_id   uuid not null references auth.users (id) on delete cascade,
+  lang    text not null,
+  day     date not null,
+  primary key (from_id, to_id, lang, day)
+);
+alter table public.friend_beats enable row level security; -- aucune règle : réservé à la fonction serveur
+revoke all on public.friend_beats from anon, authenticated;
+grant select, insert on public.friend_beats to service_role;
+grant select on public.friends to service_role;
+
+-- Secrets du déclencheur : adresse des fonctions + clé partagée avec la fonction serveur. Remplir une fois :
+--   insert into public.app_secrets values
+--     ('functions_url', 'https://<projet>.supabase.co/functions/v1'),
+--     ('trigger_secret', gen_random_uuid()::text || gen_random_uuid()::text);
+
+-- Quand un joueur gagne le mot du jour (ou améliore son résultat), on appelle la fonction serveur.
+create or replace function public.notify_friend_beat()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  fn_url text;
+  secret text;
+begin
+  if not new.won or new.day < current_date - 1 then return new; end if;
+  if tg_op = 'UPDATE' and old.won = new.won and old.guesses = new.guesses then return new; end if;
+  select value into fn_url from public.app_secrets where name = 'functions_url';
+  select value into secret from public.app_secrets where name = 'trigger_secret';
+  if fn_url is null or secret is null then return new; end if;
+  perform net.http_post(
+    url := fn_url || '/daily-reminder',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-trigger-secret', secret),
+    body := jsonb_build_object('result', jsonb_build_object('user_id', new.user_id, 'lang', new.lang, 'day', new.day)),
+    timeout_milliseconds := 10000);
+  return new;
+end;
+$$;
+revoke execute on function public.notify_friend_beat() from public, anon, authenticated;
+
+drop trigger if exists results_friend_beat on public.results;
+create trigger results_friend_beat
+  after insert or update on public.results
+  for each row execute function public.notify_friend_beat();
